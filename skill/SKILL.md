@@ -1,13 +1,14 @@
+---
+name: xpr-network-dev
+description: Comprehensive knowledge for XPR Network blockchain development - smart contracts, CLI, web SDK, DeFi, NFTs, and infrastructure
+version: 1.0.0
+author: XPR Network Community
+repository: https://github.com/XPRNetwork/xpr-network-dev-skill
+---
+
 # XPR Network Developer Skill
 
 This skill provides comprehensive knowledge for developing on XPR Network, a fast, gas-free blockchain with WebAuthn wallet support.
-
-## Skill Metadata
-
-- **Name**: xpr-network-dev
-- **Version**: 1.0.0
-- **Author**: XPR Network Community
-- **Repository**: https://github.com/XPRNetwork/xpr-network-dev-skill
 
 ## XPR Network Overview
 
