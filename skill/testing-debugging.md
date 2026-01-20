@@ -8,8 +8,10 @@ This guide covers testing smart contracts, debugging failed transactions, and re
 
 ```bash
 # Install test dependencies
-npm install --save-dev proton-tsc jest @types/jest ts-jest
+npm install --save-dev proton-tsc @proton/vert jest @types/jest ts-jest
 ```
+
+**Note**: `proton-tsc` provides types and includes `proton-asc` compiler. Tests use `@proton/vert` for blockchain simulation.
 
 ### Test Configuration
 
@@ -42,8 +44,8 @@ describe('MyContract', () => {
     // Create accounts
     [contract, user1, user2] = blockchain.createAccounts('mycontract', 'user1', 'user2');
 
-    // Deploy contract
-    contract.setContract(blockchain.loadContract('assembly/target/mycontract'));
+    // Deploy contract (loads .wasm and .abi from target dir)
+    contract.setContract(blockchain.loadContract('assembly/target/mycontract.contract'));
   });
 
   beforeEach(async () => {

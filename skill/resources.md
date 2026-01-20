@@ -32,14 +32,15 @@ Comprehensive list of endpoints, tools, documentation, and community resources f
 | Endpoint | Provider | Notes |
 |----------|----------|-------|
 | `https://proton.eosusa.io` | EOSUSA | Primary, reliable |
-| `https://proton.greymass.com` | Greymass | Good backup |
+| `https://api.protonnz.com` | ProtonNZ | Good backup |
+| `https://proton.greymass.com` | Greymass | Alternative |
 | `https://proton.cryptolions.io` | CryptoLions | Alternative |
 
 ### Testnet
 
 | Endpoint | Provider |
 |----------|----------|
-| `https://proton-testnet.eosusa.io` | EOSUSA |
+| `https://tn1.protonnz.com` | ProtonNZ |
 
 ### Health Check
 

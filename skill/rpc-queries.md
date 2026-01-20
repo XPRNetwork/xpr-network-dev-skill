@@ -16,14 +16,14 @@ This guide covers reading blockchain data from XPR Network using RPC calls and t
 
 | Endpoint | Provider |
 |----------|----------|
-| `https://proton-testnet.eosusa.io` | EOSUSA |
+| `https://tn1.protonnz.com` | EOSUSA |
 
 ### Hyperion (History API)
 
 | Network | Endpoint |
 |---------|----------|
 | Mainnet | `https://proton.eosusa.io` |
-| Testnet | `https://proton-testnet.eosusa.io` |
+| Testnet | `https://tn1.protonnz.com` |
 
 Base path: `/v2/history/` or `/v2/state/`
 

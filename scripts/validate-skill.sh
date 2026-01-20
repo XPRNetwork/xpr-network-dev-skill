@@ -65,6 +65,8 @@ URLS=(
     "https://explorer.xprnetwork.org"
     "https://resources.xprnetwork.org"
     "https://proton.eosusa.io/v1/chain/get_info"
+    "https://api.protonnz.com/v1/chain/get_info"
+    "https://tn1.protonnz.com/v1/chain/get_info"
     "https://lightapi.eosamsterdam.net/api/account/proton/eosio"
     "https://dex.api.mainnet.metalx.com/dex/v1/markets/all"
 )

@@ -25,21 +25,25 @@ npm install proton-tsc
 ```
 mycontract/
 ├── assembly/
-│   ├── index.ts          # Main contract file
-│   └── target/           # Build output (WASM + ABI)
+│   ├── mycontract.contract.ts   # Main contract file (must end in .contract.ts)
+│   └── target/                   # Build output (WASM + ABI)
 ├── package.json
 └── tsconfig.json
 ```
+
+**Important**: Contract files must be named `*.contract.ts` for the compiler to recognize them.
 
 ### package.json Scripts
 
 ```json
 {
   "scripts": {
-    "build": "proton-tsc assembly/index.ts --outDir assembly/target"
+    "build": "npx proton-asc ./assembly/mycontract.contract.ts"
   }
 }
 ```
+
+**Note**: The build command is `proton-asc` (AssemblyScript compiler), not `proton-tsc`. The `proton-tsc` package provides the TypeScript types and decorators, while `proton-asc` handles compilation.
 
 ---
 
@@ -78,7 +82,11 @@ export class User extends Table {
 
 ### Singleton Table (Single Row)
 
+Singletons store a single configuration/state row without needing a primary key.
+
 ```typescript
+import { Singleton } from 'proton-tsc';
+
 @table("config", singleton)
 export class Config extends Table {
   constructor(
@@ -89,7 +97,49 @@ export class Config extends Table {
     super();
   }
 }
+
+@contract
+class MyContract extends Contract {
+  // Initialize singleton with contract receiver
+  configSingleton: Singleton<Config> = new Singleton<Config>(this.receiver);
+
+  @action("init")
+  init(owner: Name): void {
+    // Check if already initialized
+    const existing = this.configSingleton.get();
+    if (existing !== null) {
+      check(false, "Already initialized");
+    }
+
+    // Set initial config
+    const config = new Config(owner, false, 5);
+    this.configSingleton.set(config, this.receiver);
+  }
+
+  @action("setpaused")
+  setPaused(paused: boolean): void {
+    const config = this.configSingleton.get();
+    check(config !== null, "Not initialized");
+    requireAuth(config!.owner);
+
+    config!.paused = paused;
+    this.configSingleton.set(config!, this.receiver);
+  }
+
+  @action("myaction")
+  myAction(): void {
+    const config = this.configSingleton.get();
+    check(config !== null, "Not initialized");
+    check(!config!.paused, "Contract is paused");
+    // ... action logic
+  }
+}
 ```
+
+**Singleton Methods:**
+- `get()` - Returns the singleton value or `null` if not set
+- `set(value, payer)` - Sets or updates the singleton value
+- `remove()` - Removes the singleton value
 
 ### Secondary Indexes
 
@@ -242,17 +292,36 @@ adminAction(admin: Name): void {
 
 ### Notify Handler (for incoming transfers)
 
+Notify handlers let your contract react to actions on other contracts (e.g., token transfers).
+
 ```typescript
 @action("transfer", notify)
 onTransfer(from: Name, to: Name, quantity: Asset, memo: string): void {
-  // Only process incoming transfers to this contract
+  // Only process transfers TO this contract (not from)
   if (to != this.receiver) return;
+
+  // Only accept transfers from eosio.token
+  if (this.firstReceiver != Name.fromString("eosio.token")) return;
 
   // Parse memo and process payment
   if (memo.startsWith("deposit:")) {
     // Handle deposit
   }
 }
+```
+
+**Important Contract Properties:**
+- `this.receiver` - The contract that contains this code (your contract)
+- `this.firstReceiver` - The contract where the action originated (e.g., `eosio.token` for transfers)
+
+**Security Note**: Always check `this.firstReceiver` in notify handlers to prevent spoofed notifications from malicious contracts pretending to be token contracts.
+
+```typescript
+// SECURE: Check the token contract
+if (this.firstReceiver != Name.fromString("eosio.token")) return;
+
+// INSECURE: Anyone could call your contract with fake transfer data
+// @action("transfer", notify)  // Without firstReceiver check = vulnerable
 ```
 
 ---

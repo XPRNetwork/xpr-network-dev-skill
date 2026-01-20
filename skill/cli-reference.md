@@ -124,8 +124,23 @@ proton permission:unlink myaccount mycontract
 
 ## Smart Contract Deployment
 
+### Build Contract
+
+Contract files must be named `*.contract.ts` and compiled with `proton-asc`:
+
 ```bash
-# Deploy WASM + ABI
+# Build command (in package.json)
+npx proton-asc ./assembly/mycontract.contract.ts
+
+# Output files in assembly/target/:
+# - mycontract.contract.wasm
+# - mycontract.contract.abi
+```
+
+### Deploy Contract
+
+```bash
+# Deploy WASM + ABI (looks for *.wasm and *.abi in target dir)
 proton contract:set mycontract ./assembly/target
 
 # Deploy only WASM

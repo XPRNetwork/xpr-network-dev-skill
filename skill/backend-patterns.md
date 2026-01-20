@@ -707,7 +707,7 @@ XPR_RPC_ENDPOINT=https://proton.eosusa.io
 XPR_CHAIN_ID=384da888112027f0321850a169f737c33e53b388aad48b5adace4bab97f437e0
 
 # For testnet
-# XPR_RPC_ENDPOINT=https://proton-testnet.eosusa.io
+# XPR_RPC_ENDPOINT=https://tn1.protonnz.com
 # XPR_CHAIN_ID=71ee83bcf52142d61019d95f9cc5427ba6a0d7ff8accd9e2088ae2abeaf3d3dd
 
 # Optional: AtomicAssets
@@ -758,7 +758,7 @@ function loadConfig(): Config {
 ```typescript
 // Use testnet for development
 const TESTNET_CONFIG = {
-  endpoint: 'https://proton-testnet.eosusa.io',
+  endpoint: 'https://tn1.protonnz.com',
   chainId: '71ee83bcf52142d61019d95f9cc5427ba6a0d7ff8accd9e2088ae2abeaf3d3dd'
 };
 
