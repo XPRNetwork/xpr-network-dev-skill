@@ -677,11 +677,245 @@ python3 -m pip install pyeoskit
 
 ---
 
+## Fee Structures
+
+### DEX Trading Fees
+
+#### Volume-Based Tiers (30-Day Volume)
+
+| Tier | Volume | Maker Fee | Taker Fee |
+|------|--------|-----------|-----------|
+| I | < $250,000 | 0.10% | 0.10% |
+| II | ≥ $250,000 | 0.08% | 0.08% |
+| III | ≥ $500,000 | 0.06% | 0.06% |
+| IV | ≥ $750,000 | 0.04% | 0.04% |
+| V | ≥ $1,000,000 | 0.02% | 0.02% |
+| VIP | ≥ $1,250,000 | 0.01% | 0.01% |
+| Market Maker | - | 0% | 0% |
+
+#### Staking-Based Discounts (Staked XPR)
+
+| Tier | Staked XPR | Maker Fee | Taker Fee |
+|------|------------|-----------|-----------|
+| I | < 1,000,000 | 0.10% | 0.10% |
+| II | ≥ 1,000,000 | 0.08% | 0.08% |
+| III | ≥ 10,000,000 | 0.06% | 0.06% |
+| IV | ≥ 20,000,000 | 0.04% | 0.04% |
+| V | ≥ 60,000,000 | 0.02% | 0.02% |
+| VIP | ≥ 100,000,000 | 0% | 0% |
+
+#### NFT DEX Key Discount
+
+Holders of limited edition NFT DEX Keys receive **100% fee discount**.
+
+### Swap Fees
+
+**Base fee: 0.3%** distributed as:
+- **0.2%** → Liquidity providers
+- **0.1%** → XPR burns / XPR Grants
+
+#### Swap Fee Discounts (by Staked XPR)
+
+| Staked XPR | Discount |
+|------------|----------|
+| ≥ 100,000 | 33% |
+| ≥ 1,000,000 | 66% |
+| ≥ 10,000,000 | 100% |
+
+### Referral Program
+
+| Type | Discount/Reward |
+|------|-----------------|
+| Referrer | 25% of fees |
+| Referee | 5% discount |
+
+*Applies to DEX only (not Swap). Referee rewards last 1 year.*
+
+---
+
+## Swap (AMM)
+
+Metal X Swap is an automated market maker (AMM) for instant token swaps.
+
+### Available Swap Tokens
+
+XPR, XUSDC, XBTC, XETH, XDOGE, XBCH, XLTC, XUSDT, XUNI, XBNB, XEOS, XADA, METAL, XMT, LOAN, STRX, MINT, SNIPS, XLUNR
+
+### Wrapped Tokens
+
+Wrapped tokens (X-prefixed) are assets from other blockchains converted to XPR Network:
+- Instant transaction times
+- Near-zero fees
+- 1:1 backing with original asset
+
+### DEX vs Swap Comparison
+
+| Feature | DEX | Swap |
+|---------|-----|------|
+| Type | Orderbook | AMM |
+| Order Types | Limit, Market, Stop Loss, Take Profit | Market only |
+| Fee | 0.01-0.10% | 0.3% |
+| Best For | Precise price control | Instant trades |
+| Liquidity | Order book depth | Pool liquidity |
+
+---
+
+## Liquidity Pools
+
+### How Pools Work
+
+1. Add equal USD value of both tokens in a pair
+2. Receive LP (Liquidity Provider) tokens
+3. Earn 0.2% of every trade proportional to your pool share
+4. Withdraw anytime (no lockup period)
+
+### Example
+
+```
+Pool: 9,000 XUSDC + 900,000 XPR
+You add: 1,000 XUSDC + 100,000 XPR (10% of pool)
+You earn: 10% of the 0.2% trading fees
+```
+
+### Impermanent Loss
+
+When token prices change relative to deposit time, you may experience impermanent loss. Larger price changes = bigger loss.
+
+---
+
+## Farming (Yield Farming)
+
+### How Farming Works
+
+1. Become a liquidity provider (get LP tokens)
+2. Stake LP tokens in farms
+3. Earn rewards (variable APR)
+4. Harvest rewards anytime
+
+**Key Points:**
+- **No lockup period** - withdraw anytime
+- **Variable APR** - changes based on total staked and reward token value
+
+---
+
+## DEX Bot (Trading Bot)
+
+Official open-source trading bot for automated trading on Metal X.
+
+**Repository:** https://github.com/XPRNetwork/dex-bot
+
+### Bot Types
+
+#### Grid Bot
+- Automatically buy low, sell high within price range
+- Best for volatile markets
+- Configurable grid levels and amounts
+
+#### Market Maker Bot
+- Places ladder of buy/sell orders around base price
+- Direction-agnostic strategy
+- Provides liquidity to orderbook
+
+### Configuration Example
+
+```json
+{
+  "cancelOpenOrdersOnExit": true,
+  "strategy": "gridBot",
+  "gridBot": {
+    "pairs": [
+      {
+        "symbol": "XPR_XMD",
+        "upperLimit": 0.0009000,
+        "lowerLimit": 0.0006000,
+        "gridLevels": 14,
+        "bidAmountPerLevel": 40000
+      }
+    ]
+  }
+}
+```
+
+### Running the Bot
+
+```bash
+# Clone repository
+git clone https://github.com/XPRNetwork/dex-bot.git
+cd dex-bot
+npm install
+
+# Set environment variables
+export PROTON_USERNAME=your_username
+export PROTON_PRIVATE_KEY=your_private_key
+
+# Run bot
+npm run bot
+
+# Stop: Ctrl+C
+```
+
+**Important Notes:**
+- Minimum order: $1 or 1 XMD
+- Bot auto-replaces filled orders
+- Keep private key secure
+- Verify identity at https://identity.metalx.com if needed
+
+---
+
+## Bridge Withdrawal Fees
+
+| Token | Fee |
+|-------|-----|
+| ADA | 1 |
+| DOGE | 5 |
+| EOS | 0.2 |
+| HBAR | 10 |
+| SOL | 0.01 |
+| USDC | 1 |
+| XLM | 1 |
+| XRP | 0.5 |
+| XPR | FREE |
+
+*Bridge deposit fee: 0%*
+
+---
+
+## Common Errors
+
+### Place Order Errors
+
+| Error | Cause |
+|-------|-------|
+| Contract is paused | DEX temporarily paused |
+| Market not found | Invalid market_id |
+| Placing orders is disabled for this market | Market status prevents orders |
+| Invalid order type | Must be 1, 2, or 3 |
+| Invalid order side | Must be 1 or 2 |
+| Invalid price | Price must be between 0 and INT_MAX |
+| Minimum order size is ... | Below market minimum |
+| Invalid order type - add trigger price | Stop loss/take profit needs trigger_price > 0 |
+| Invalid referrer name, self referral not allowed | Cannot refer yourself |
+
+### Cancel Order Errors
+
+| Error | Cause |
+|-------|-------|
+| Contract is paused | DEX temporarily paused |
+| Invalid authorization | Not authorized |
+| Invalid order id | Must be > 0 |
+| Order not found | Already executed or doesn't exist |
+| Accounts mismatch | Don't own this order |
+| Market not found | Invalid market reference |
+
+---
+
 ## Additional Resources
 
+- **Metal X App:** https://app.metalx.com
 - **API Docs:** https://api.dex.docs.metalx.com/
 - **Developer Docs:** https://docs.metalx.com/
-- **Metal X Exchange:** https://metalx.com/
 - **WebAuth Wallet:** https://webauth.com/
 - **DEX Bot:** https://github.com/XPRNetwork/dex-bot
+- **LOAN Protocol:** https://lending.docs.metalx.com
+- **Identity Verification:** https://identity.metalx.com
 - **Support:** https://help.xprnetwork.org/
