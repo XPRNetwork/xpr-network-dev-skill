@@ -26,11 +26,9 @@ Tokens on XPR Network consist of:
 
 ## Creating a Token
 
-### Option 1: Use Existing Token Contract
+To create a custom token, you need to deploy your own token contract. The `xtokens` contract listed above is a system contract for official wrapped tokens (XUSDT, XUSDC, XBTC) and is not available for public use.
 
-Deploy tokens on `xtokens` or create your own token contract.
-
-### Option 2: Deploy Your Own Token Contract
+### Deploy Your Own Token Contract
 
 #### 1. Create Token Contract
 
