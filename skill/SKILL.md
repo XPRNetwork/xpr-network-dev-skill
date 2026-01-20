@@ -71,6 +71,20 @@ Load specialized modules based on your task:
 | `metalx-dex.md` | DEX integration | Complete MetalX API, orders, swaps |
 | `defi-trading.md` | Trading bots/DeFi | Grid bots, market makers, perps architecture |
 | `loan-protocol.md` | Lending protocol | LOAN protocol, supply, borrow, liquidations |
+| `oracles-randomness.md` | Price feeds & RNG | Oracle prices, verifiable random numbers |
+
+### Integration Patterns
+
+| Module | Read When | Key Topics |
+|--------|-----------|------------|
+| `real-time-events.md` | Live updates | Hyperion streaming, WebSockets, notifications |
+| `payment-patterns.md` | Commerce/payments | Payment links, invoicing, POS, subscriptions |
+
+### Infrastructure
+
+| Module | Read When | Key Topics |
+|--------|-----------|------------|
+| `node-operation.md` | Running nodes | API nodes, Block Producers, validators |
 
 ### Safety & Reference
 

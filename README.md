@@ -74,6 +74,18 @@ Copy relevant sections from `skill/SKILL.md` directly into your project's `CLAUD
 | [metalx-dex.md](skill/metalx-dex.md) | Complete MetalX DEX API reference |
 | [defi-trading.md](skill/defi-trading.md) | Trading bots, perps architecture, DeFi patterns |
 | [loan-protocol.md](skill/loan-protocol.md) | LOAN lending protocol integration |
+| [oracles-randomness.md](skill/oracles-randomness.md) | Price oracles, verifiable random numbers |
+
+### Integration Patterns
+| Module | Description |
+|--------|-------------|
+| [real-time-events.md](skill/real-time-events.md) | Hyperion streaming, WebSockets, notifications |
+| [payment-patterns.md](skill/payment-patterns.md) | Payment links, invoicing, POS, subscriptions |
+
+### Infrastructure
+| Module | Description |
+|--------|-------------|
+| [node-operation.md](skill/node-operation.md) | API nodes, Block Producers, validators, Leap setup |
 
 ### Safety & Reference
 | Module | Description |
