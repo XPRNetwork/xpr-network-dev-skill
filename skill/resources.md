@@ -33,14 +33,20 @@ Comprehensive list of endpoints, tools, documentation, and community resources f
 |----------|----------|-------|
 | `https://proton.eosusa.io` | EOSUSA | Primary, reliable |
 | `https://api.protonnz.com` | ProtonNZ | Good backup |
+| `https://api-xprnetwork-main.saltant.io` | Saltant | v1 + v2 (Hyperion) |
 | `https://proton.greymass.com` | Greymass | Alternative |
 | `https://proton.cryptolions.io` | CryptoLions | Alternative |
+
+**P2P Peer:** `p2p-protonmain.saltant.io:9876`
 
 ### Testnet
 
 | Endpoint | Provider |
 |----------|----------|
 | `https://tn1.protonnz.com` | ProtonNZ |
+| `https://api-xprnetwork-test.saltant.io` | Saltant |
+
+**P2P Peer:** `p2p-protontest.saltant.io:9879`
 
 ### Health Check
 

@@ -79,10 +79,12 @@ The actual NFTs owned by users.
 
 ### AtomicAssets API
 
-| Network | Endpoint |
-|---------|----------|
-| Mainnet | `https://proton.api.atomicassets.io` |
-| Testnet | `https://test.proton.api.atomicassets.io` |
+| Network | Endpoint | Provider |
+|---------|----------|----------|
+| Mainnet | `https://proton.api.atomicassets.io` | Pink.gg |
+| Mainnet | `https://aa-xprnetwork-main.saltant.io` | Saltant |
+| Testnet | `https://test.proton.api.atomicassets.io` | Pink.gg |
+| Testnet | `https://aa-xprnetwork-test.saltant.io` | Saltant |
 
 ### AtomicMarket API (Marketplace)
 
