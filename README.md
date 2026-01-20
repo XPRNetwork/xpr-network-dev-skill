@@ -54,7 +54,10 @@ Copy relevant sections from `skill/SKILL.md` directly into your project's `CLAUD
 | [smart-contracts.md](skill/smart-contracts.md) | Contract development with @proton/ts-contracts |
 | [cli-reference.md](skill/cli-reference.md) | Complete @proton/cli command reference |
 | [web-sdk.md](skill/web-sdk.md) | Frontend integration with @proton/web-sdk |
+| [backend-patterns.md](skill/backend-patterns.md) | Server-side signing, automated operations, bots |
 | [rpc-queries.md](skill/rpc-queries.md) | Table reading and RPC patterns |
+| [nfts-atomicassets.md](skill/nfts-atomicassets.md) | NFT development with AtomicAssets standard |
+| [defi-trading.md](skill/defi-trading.md) | DEX integration, trading bots, perps architecture |
 | [safety-guidelines.md](skill/safety-guidelines.md) | CRITICAL: Table modification rules, deployment safety |
 | [examples.md](skill/examples.md) | Real-world patterns from production contracts |
 | [resources.md](skill/resources.md) | Endpoints, links, community resources |
@@ -90,6 +93,21 @@ Claude will load specialized modules on demand based on your queries.
 - `@proton/web-sdk` for wallet connection
 - Session management and transaction signing
 - RPC queries with `@proton/js`
+
+### Backend Development
+- Server-side transaction signing
+- Automated bots and scheduled tasks
+- Security best practices for key management
+
+### NFT Development
+- AtomicAssets standard (collections, schemas, templates, assets)
+- Minting, transfers, and marketplace integration
+- IPFS integration for media storage
+
+### DeFi and Trading
+- MetalX DEX integration (order book, trades)
+- Trading bot patterns (grid bot, market maker)
+- Perpetual futures architecture and building blocks
 
 ### Safety Guidelines
 - **CRITICAL**: Never modify existing table structures with data

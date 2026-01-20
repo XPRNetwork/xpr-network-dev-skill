@@ -51,11 +51,29 @@ Read: `web-sdk.md`
 - Transaction signing
 - Session management
 
+### For Backend/Server-Side Development
+Read: `backend-patterns.md`
+- Programmatic transaction signing
+- Automated operations and bots
+- Security best practices
+
 ### For Reading Blockchain Data
 Read: `rpc-queries.md`
 - RPC endpoints
 - Table query patterns
 - Pagination and secondary indexes
+
+### For NFT Development
+Read: `nfts-atomicassets.md`
+- AtomicAssets standard (collections, schemas, templates, assets)
+- Minting and transfers
+- Marketplace integration
+
+### For DeFi/Trading Applications
+Read: `defi-trading.md`
+- MetalX DEX integration
+- Trading bot patterns (grid, market maker)
+- Building perpetual futures DEX
 
 ### CRITICAL: Before Modifying Contracts
 Read: `safety-guidelines.md`
