@@ -46,6 +46,37 @@ For XPR Network development guidance, see: /path/to/xpr-network-dev-skill/skill/
 
 Copy relevant sections from `skill/SKILL.md` directly into your project's `CLAUDE.md` file.
 
+## Usage with Other AI Tools
+
+This skill is just structured markdown - it works with any AI coding assistant, not just Claude Code.
+
+### Cursor
+
+**Option A: .cursorrules**
+```bash
+# Copy relevant modules into your .cursorrules file
+cat skill/smart-contracts.md >> .cursorrules
+```
+
+**Option B: Reference in prompts**
+```
+@skill/smart-contracts.md How do I create a singleton table?
+```
+
+**Option C: Add as documentation**
+Add the `skill/` folder to your project and Cursor will index it.
+
+### GitHub Copilot / Other Tools
+
+Copy relevant module content into your prompt context or project documentation. The knowledge is tool-agnostic.
+
+### Direct Reference
+
+For any AI tool, you can paste sections directly:
+```
+"I'm building on XPR Network. Here's the relevant documentation: [paste from skill/smart-contracts.md]"
+```
+
 ## Skill Modules
 
 ### Core Development
