@@ -491,7 +491,7 @@ curl "https://proton.eosusa.io/v2/history/get_actions?account=ACCOUNT&limit=10"
 
 ### Resources
 
-1. **Block Explorer**: https://protonscan.io - Check transactions and errors
+1. **Block Explorer**: https://explorer.xprnetwork.org - Check transactions and errors
 2. **Discord**: https://discord.gg/xprnetwork - Community help
 3. **GitHub Issues**: https://github.com/XPRNetwork - Report bugs
 4. **Hyperion**: Check transaction history for debugging

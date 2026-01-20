@@ -77,20 +77,31 @@ curl "https://proton.eosusa.io/v2/history/get_actions?account=myaccount&filter=e
 
 | Explorer | URL | Features |
 |----------|-----|----------|
-| **Proton Scan** | https://protonscan.io | Primary explorer |
-| **XPR Network Explorer** | https://explorer.xprnetwork.org | Official explorer |
+| **XPR Network Explorer (Mainnet)** | https://explorer.xprnetwork.org | Official explorer, wallet features |
+| **XPR Network Explorer (Testnet)** | https://testnet.explorer.xprnetwork.org | Testnet explorer |
+
+### Explorer Features
+
+The XPR Network Explorer provides:
+- View accounts, transactions, blocks
+- Transfer tokens (single, multi, batch)
+- Stake/unstake XPR
+- Vote for Block Producers
+- Manage account permissions and keys
+- Create multi-signature (MSIG) transactions
+- NFT transfers
 
 ### Direct Links
 
 ```
 # Account
-https://protonscan.io/account/ACCOUNT_NAME
+https://explorer.xprnetwork.org/account/ACCOUNT_NAME
 
 # Transaction
-https://protonscan.io/tx/TRANSACTION_ID
+https://explorer.xprnetwork.org/transaction/TRANSACTION_ID
 
 # Contract
-https://explorer.xprnetwork.org/account/CONTRACT_NAME
+https://explorer.xprnetwork.org/account/CONTRACT_NAME?tab=contract
 ```
 
 ---
@@ -143,16 +154,30 @@ https://explorer.xprnetwork.org/account/CONTRACT_NAME
 
 https://resources.xprnetwork.org
 
-- Buy/sell RAM
-- View resource prices
-- Manage account resources
+| Page | URL | Purpose |
+|------|-----|---------|
+| Main | https://resources.xprnetwork.org | Buy CPU/NET plans |
+| Storage | https://resources.xprnetwork.org/storage | Buy/sell RAM |
+| Create Account | https://resources.xprnetwork.org/create-account | Create new accounts |
+| Faucet | https://resources.xprnetwork.org/faucet | Get testnet tokens |
+
+### Resource Pricing
+
+| Resource | Cost |
+|----------|------|
+| RAM Storage | 0.0022 XPR per byte |
+| Free RAM (WebAuth) | 12,000 bytes per account |
+| CPU/NET Basic | 100 XPR/month (~500 tx/day) |
+| CPU/NET Plus | 1,000 XPR/month (~5,000 tx/day) |
+| CPU/NET Pro | 10,000 XPR/month (~50,000 tx/day) |
+| CPU/NET Enterprise | 100,000 XPR/month (~500,000 tx/day) |
 
 ### Faucets
 
 | Network | Token | URL/Command |
 |---------|-------|-------------|
 | Testnet | XPR | `proton faucet:claim XPR myaccount` |
-| Mainnet | FOOBAR | https://foobar.protonchain.com |
+| Testnet | Web | https://resources.xprnetwork.org/faucet |
 
 ### Token Contracts
 
@@ -168,11 +193,30 @@ https://resources.xprnetwork.org
 
 ## Wallets
 
-| Wallet | Type | URL |
-|--------|------|-----|
-| **WebAuth** | Mobile (iOS/Android) | App stores |
-| **webauth.com** | Web browser | https://webauth.com |
-| **Anchor** | Desktop | https://greymass.com/anchor |
+| Wallet | Type | Platforms | Best For |
+|--------|------|-----------|----------|
+| **WebAuth** | Mobile/Web | iOS, Android, Web | General users (recommended) |
+| **Anchor** | Mobile/Desktop | iOS, Android, Mac, Win, Linux | Advanced users, owner key access |
+| **Ledger** | Hardware | Nano X, Nano S | Maximum security |
+| **TokenPocket** | Mobile | iOS (TestFlight), Android | Multi-chain users |
+| **Scatter** | Desktop | Mac, Windows, Linux | Desktop multi-chain |
+
+### Wallet URLs
+
+| Wallet | URL |
+|--------|-----|
+| WebAuth Web | https://webauth.com |
+| WebAuth iOS | App Store |
+| WebAuth Android | Play Store |
+| Anchor | https://greymass.com/anchor |
+
+### WebAuth Features
+
+- Non-custodial (you control keys)
+- WebAuthn support (Face ID, fingerprint, security keys)
+- Account creation
+- Staking and NFTs
+- Fiat on-ramp (US, Australia, New Zealand)
 
 ---
 
@@ -213,12 +257,23 @@ curl -s -X POST https://proton.eosusa.io/v1/chain/get_table_rows \
 
 ---
 
+## Governance & Staking
+
+| Resource | URL | Description |
+|----------|-----|-------------|
+| **Governance Portal** | https://gov.xprnetwork.org | Proposals and voting |
+| **Resources Portal** | https://resources.xprnetwork.org | Buy RAM, manage resources |
+| **Identity Verification** | https://identity.metalx.com | KYC verification |
+| **Help Desk** | https://help.xprnetwork.org | Support and FAQs |
+
+---
+
 ## Community
 
 | Platform | Link |
 |----------|------|
 | **Discord** | https://discord.gg/xprnetwork |
-| **Telegram** | https://t.me/proaborded |
+| **Telegram** | https://t.me/XPRNetwork |
 | **Twitter/X** | https://twitter.com/XPRNetwork |
 
 ---

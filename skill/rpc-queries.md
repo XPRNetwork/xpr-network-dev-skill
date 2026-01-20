@@ -39,8 +39,7 @@ Fast, lightweight API for common queries like token balances.
 
 | Explorer | URL |
 |----------|-----|
-| ProtonScan | `https://protonscan.io` |
-| Bloks | `https://proton.bloks.io` |
+| XPR Network Explorer | `https://explorer.xprnetwork.org` |
 
 ---
 
@@ -732,28 +731,19 @@ async function getTotalUsers(): Promise<number> {
 
 ## Block Explorer APIs
 
-### ProtonScan
+### XPR Network Explorer
 
-ProtonScan provides a web interface and some API endpoints.
+The official XPR Network Explorer provides a web interface for viewing accounts, transactions, and contracts.
 
 ```typescript
 // Link to transaction
-const txLink = `https://protonscan.io/transaction/${txId}`;
+const txLink = `https://explorer.xprnetwork.org/transaction/${txId}`;
 
 // Link to account
-const accountLink = `https://protonscan.io/account/${account}`;
+const accountLink = `https://explorer.xprnetwork.org/account/${account}`;
 
 // Link to contract
-const contractLink = `https://protonscan.io/contract/${contract}`;
-```
-
-### Bloks.io
-
-Alternative explorer with rich features.
-
-```typescript
-const bloksLink = `https://proton.bloks.io/transaction/${txId}`;
-const bloksAccount = `https://proton.bloks.io/account/${account}`;
+const contractLink = `https://explorer.xprnetwork.org/account/${contract}?tab=contract`;
 ```
 
 ---

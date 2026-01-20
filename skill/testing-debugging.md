@@ -328,7 +328,7 @@ function debugSession(session: any) {
 For any transaction, check the block explorer:
 
 ```
-https://protonscan.io/tx/TRANSACTION_ID
+https://explorer.xprnetwork.org/tx/TRANSACTION_ID
 ```
 
 This shows:
@@ -342,16 +342,16 @@ This shows:
 
 ```bash
 # Account overview
-https://protonscan.io/account/ACCOUNT_NAME
+https://explorer.xprnetwork.org/account/ACCOUNT_NAME
 
 # Contract ABI
-https://protonscan.io/account/ACCOUNT_NAME?tab=contract
+https://explorer.xprnetwork.org/account/ACCOUNT_NAME?tab=contract
 
 # Recent transactions
-https://protonscan.io/account/ACCOUNT_NAME?tab=transactions
+https://explorer.xprnetwork.org/account/ACCOUNT_NAME?tab=transactions
 
 # Table data
-https://protonscan.io/account/ACCOUNT_NAME?tab=tables
+https://explorer.xprnetwork.org/account/ACCOUNT_NAME?tab=tables
 ```
 
 ---

@@ -59,6 +59,7 @@ Copy relevant sections from `skill/SKILL.md` directly into your project's `CLAUD
 | [rpc-queries.md](skill/rpc-queries.md) | Table reading, Hyperion API, Light API |
 | [testing-debugging.md](skill/testing-debugging.md) | Unit testing, testnet workflows, debugging |
 | [accounts-permissions.md](skill/accounts-permissions.md) | Account creation, permissions, multisig |
+| [staking-governance.md](skill/staking-governance.md) | XPR staking, Block Producers, DPoS, resource model |
 
 ### Tokens & Identity
 | Module | Description |
@@ -168,7 +169,7 @@ Contributions are welcome! Please:
 
 - **Official Docs**: https://docs.xprnetwork.org
 - **GitHub**: https://github.com/XPRNetwork
-- **Block Explorer**: https://protonscan.io
+- **Block Explorer**: https://explorer.xprnetwork.org
 - **Discord**: https://discord.gg/xprnetwork
 
 ## License

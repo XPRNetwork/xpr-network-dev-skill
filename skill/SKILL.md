@@ -22,6 +22,16 @@ XPR Network is an EOS-based blockchain optimized for payments and identity:
 | **Contracts** | AssemblyScript/TypeScript with @proton/ts-contracts |
 | **Storage** | On-chain tables with RAM-based pricing |
 
+### Name Change: Proton → XPR Network
+
+The blockchain was rebranded from **Proton** to **XPR Network** in 2024. You may see legacy references to "Proton" in:
+- Package names (`@proton/cli`, `@proton/web-sdk`, `proton-tsc`)
+- GitHub organization (`XPRNetwork`, formerly `ProtonProtocol`)
+- Documentation and code comments
+- Explorer (now `explorer.xprnetwork.org`, formerly `protonscan.io` and `proton.bloks.io`)
+
+The token symbol remains **XPR** and all functionality is unchanged.
+
 ### Chain IDs
 
 | Network | Chain ID |
@@ -44,6 +54,7 @@ Load specialized modules based on your task:
 | `rpc-queries.md` | Reading chain data | RPC, Hyperion API, Light API, pagination |
 | `testing-debugging.md` | Testing contracts | Unit tests, testnet, debugging, logs |
 | `accounts-permissions.md` | Account management | Create accounts, permissions, multisig |
+| `staking-governance.md` | Staking & voting | XPR staking, BPs, DPoS, resource model |
 
 ### Token & Identity
 
@@ -179,7 +190,7 @@ const { link, session } = await ProtonWebSDK({
 
 - **Documentation**: https://docs.xprnetwork.org
 - **GitHub**: https://github.com/XPRNetwork
-- **Block Explorer**: https://protonscan.io
+- **Block Explorer**: https://explorer.xprnetwork.org
 - **Resources Portal**: https://resources.xprnetwork.org (buy RAM, etc.)
 
 ---
