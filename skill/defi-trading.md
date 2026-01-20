@@ -28,7 +28,7 @@ MetalX is the primary decentralized exchange on XPR Network - an order book DEX 
 
 ```typescript
 async function getMarkets() {
-  const response = await fetch('https://dex.api.mainnet.metalx.com/dex/markets');
+  const response = await fetch('https://dex.api.mainnet.metalx.com/dex/v1/markets/all');
   const { data } = await response.json();
   return data;
 }
@@ -47,7 +47,7 @@ async function getMarkets() {
 ```typescript
 async function getOrderBook(marketId: string) {
   const response = await fetch(
-    `https://dex.api.mainnet.metalx.com/dex/orderbook?market_id=${marketId}`
+    `https://dex.api.mainnet.metalx.com/dex/v1/orders/depth?market_id=${marketId}`
   );
   const { data } = await response.json();
   return data;  // { bids: [...], asks: [...] }
@@ -59,7 +59,7 @@ async function getOrderBook(marketId: string) {
 ```typescript
 async function getLatestPrice(marketId: string) {
   const response = await fetch(
-    `https://dex.api.mainnet.metalx.com/dex/ticker?market_id=${marketId}`
+    `https://dex.api.mainnet.metalx.com/dex/v1/trades/daily?market_id=${marketId}`
   );
   const { data } = await response.json();
   return data;  // { last_price, high_24h, low_24h, volume_24h, ... }
@@ -71,7 +71,7 @@ async function getLatestPrice(marketId: string) {
 ```typescript
 async function getTradeHistory(marketId: string, limit: number = 50) {
   const response = await fetch(
-    `https://dex.api.mainnet.metalx.com/dex/trades?market_id=${marketId}&limit=${limit}`
+    `https://dex.api.mainnet.metalx.com/dex/v1/trades/recent?market_id=${marketId}&limit=${limit}`
   );
   const { data } = await response.json();
   return data;
@@ -82,7 +82,7 @@ async function getTradeHistory(marketId: string, limit: number = 50) {
 
 ```typescript
 async function getOpenOrders(account: string, marketId?: string) {
-  let url = `https://dex.api.mainnet.metalx.com/dex/orders?account=${account}&status=open`;
+  let url = `https://dex.api.mainnet.metalx.com/dex/v1/orders/open?account=${account}`;
   if (marketId) {
     url += `&market_id=${marketId}`;
   }
@@ -97,7 +97,7 @@ async function getOpenOrders(account: string, marketId?: string) {
 ```typescript
 async function getDexBalances(account: string) {
   const response = await fetch(
-    `https://dex.api.mainnet.metalx.com/dex/balances?account=${account}`
+    `https://dex.api.mainnet.metalx.com/dex/v1/account/balances?account=${account}`
   );
   const { data } = await response.json();
   return data;

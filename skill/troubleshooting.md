@@ -449,7 +449,7 @@ await session.transact({
 **Solutions**:
 ```typescript
 // Check DEX balance
-const balances = await fetch(`https://dex.api.mainnet.metalx.com/dex/balances?account=${account}`);
+const balances = await fetch(`https://dex.api.mainnet.metalx.com/dex/v1/account/balances?account=${account}`);
 
 // Deposit more
 await depositToDex(account, '100.0000 XPR', 'eosio.token');
