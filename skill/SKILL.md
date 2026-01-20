@@ -69,11 +69,17 @@ Read: `nfts-atomicassets.md`
 - Minting and transfers
 - Marketplace integration
 
-### For DeFi/Trading Applications
+### For MetalX DEX Trading
+Read: `metalx-dex.md`
+- Complete MetalX API reference
+- Order book trading, swaps, liquidity pools
+- Trading service class and patterns
+
+### For DeFi/Trading Architecture
 Read: `defi-trading.md`
-- MetalX DEX integration
 - Trading bot patterns (grid, market maker)
 - Building perpetual futures DEX
+- Advanced DeFi building blocks
 
 ### CRITICAL: Before Modifying Contracts
 Read: `safety-guidelines.md`

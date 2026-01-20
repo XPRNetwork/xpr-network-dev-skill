@@ -57,7 +57,8 @@ Copy relevant sections from `skill/SKILL.md` directly into your project's `CLAUD
 | [backend-patterns.md](skill/backend-patterns.md) | Server-side signing, automated operations, bots |
 | [rpc-queries.md](skill/rpc-queries.md) | Table reading and RPC patterns |
 | [nfts-atomicassets.md](skill/nfts-atomicassets.md) | NFT development with AtomicAssets standard |
-| [defi-trading.md](skill/defi-trading.md) | DEX integration, trading bots, perps architecture |
+| [metalx-dex.md](skill/metalx-dex.md) | MetalX DEX API, order book trading, swaps |
+| [defi-trading.md](skill/defi-trading.md) | Trading bots, perps architecture, DeFi patterns |
 | [safety-guidelines.md](skill/safety-guidelines.md) | CRITICAL: Table modification rules, deployment safety |
 | [examples.md](skill/examples.md) | Real-world patterns from production contracts |
 | [resources.md](skill/resources.md) | Endpoints, links, community resources |
