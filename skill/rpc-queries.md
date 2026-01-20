@@ -22,7 +22,25 @@ This guide covers reading blockchain data from XPR Network using RPC calls and t
 
 | Network | Endpoint |
 |---------|----------|
-| Mainnet | `https://proton.eosusa.io/v2/history/get_actions` |
+| Mainnet | `https://proton.eosusa.io` |
+| Testnet | `https://proton-testnet.eosusa.io` |
+
+Base path: `/v2/history/` or `/v2/state/`
+
+### Light API
+
+| Network | Endpoint |
+|---------|----------|
+| Mainnet | `https://lightapi.eosamsterdam.net/api` |
+
+Fast, lightweight API for common queries like token balances.
+
+### Block Explorers
+
+| Explorer | URL |
+|----------|-----|
+| ProtonScan | `https://protonscan.io` |
+| Bloks | `https://proton.bloks.io` |
 
 ---
 
@@ -363,41 +381,502 @@ export const protonRPC = new ProtonRPC();
 
 ## Hyperion History API
 
-For transaction history, use Hyperion:
+Hyperion provides full history and state APIs. Base URL: `https://proton.eosusa.io`
+
+### History Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `/v2/history/get_actions` | Query action history |
+| `/v2/history/get_transaction` | Get transaction by ID |
+| `/v2/history/get_deltas` | Table delta history |
+| `/v2/history/get_abi_snapshot` | Historical ABI |
+| `/v2/history/get_created_accounts` | Accounts created by account |
+| `/v2/history/get_creator` | Get account creator |
+| `/v2/history/get_transfers` | Token transfer history |
+
+### State Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `/v2/state/get_account` | Account info with resources |
+| `/v2/state/get_key_accounts` | Accounts by public key |
+| `/v2/state/get_tokens` | All token balances for account |
+| `/v2/state/get_voters` | Voter information |
+| `/v2/state/get_proposals` | Multisig proposals |
 
 ### Get Account Actions
 
 ```typescript
-async function getAccountActions(account: string, limit: number = 100) {
-  const response = await fetch(
-    `https://proton.eosusa.io/v2/history/get_actions?account=${account}&limit=${limit}`
-  );
+interface HyperionAction {
+  '@timestamp': string;
+  trx_id: string;
+  act: {
+    account: string;
+    name: string;
+    authorization: Array<{ actor: string; permission: string }>;
+    data: Record<string, any>;
+  };
+  block_num: number;
+  producer: string;
+}
+
+async function getAccountActions(
+  account: string,
+  options: {
+    limit?: number;
+    skip?: number;
+    filter?: string;
+    sort?: 'asc' | 'desc';
+    after?: string;
+    before?: string;
+  } = {}
+): Promise<{ actions: HyperionAction[]; total: number }> {
+  const url = new URL('https://proton.eosusa.io/v2/history/get_actions');
+  url.searchParams.set('account', account);
+  url.searchParams.set('limit', String(options.limit ?? 100));
+
+  if (options.skip) url.searchParams.set('skip', String(options.skip));
+  if (options.filter) url.searchParams.set('filter', options.filter);
+  if (options.sort) url.searchParams.set('sort', options.sort);
+  if (options.after) url.searchParams.set('after', options.after);
+  if (options.before) url.searchParams.set('before', options.before);
+
+  const response = await fetch(url);
   return response.json();
 }
-```
 
-### Filter by Action
+// Examples:
+// Get all actions
+await getAccountActions('alice');
 
-```typescript
 // Get only transfer actions
-const url = new URL('https://proton.eosusa.io/v2/history/get_actions');
-url.searchParams.set('account', 'alice');
-url.searchParams.set('filter', 'eosio.token:transfer');
-url.searchParams.set('limit', '50');
+await getAccountActions('alice', { filter: 'eosio.token:transfer' });
 
-const response = await fetch(url);
-const { actions } = await response.json();
+// Get actions from last 24 hours
+await getAccountActions('alice', {
+  after: new Date(Date.now() - 86400000).toISOString()
+});
+
+// Paginate through all actions
+await getAccountActions('alice', { skip: 100, limit: 100 });
 ```
 
-### Get Transaction
+### Filter by Contract and Action
 
 ```typescript
-async function getTransaction(txId: string) {
+// Filter format: "contract:action" or "contract:*" for all actions
+const filters = {
+  allTransfers: 'eosio.token:transfer',
+  allFromContract: 'pricebattle:*',
+  specificAction: 'atomicassets:mintasset',
+  multipleFilters: 'eosio.token:transfer,atomicassets:transfer'  // comma-separated
+};
+
+// Get only battle-related actions
+const { actions } = await getAccountActions('alice', {
+  filter: 'pricebattle:*',
+  limit: 50
+});
+```
+
+### Get Token Transfers
+
+```typescript
+interface Transfer {
+  from: string;
+  to: string;
+  quantity: string;
+  memo: string;
+  block_num: number;
+  '@timestamp': string;
+  trx_id: string;
+}
+
+async function getTransfers(
+  account: string,
+  symbol?: string
+): Promise<{ transfers: Transfer[] }> {
+  const url = new URL('https://proton.eosusa.io/v2/history/get_transfers');
+  url.searchParams.set('account', account);
+  if (symbol) url.searchParams.set('symbol', symbol);
+  url.searchParams.set('limit', '100');
+
+  const response = await fetch(url);
+  return response.json();
+}
+
+// Get XPR transfers only
+const { transfers } = await getTransfers('alice', 'XPR');
+```
+
+### Get Transaction by ID
+
+```typescript
+interface HyperionTransaction {
+  trx_id: string;
+  lib: number;
+  actions: HyperionAction[];
+  block_num: number;
+  block_time: string;
+  irreversible: boolean;
+}
+
+async function getTransaction(txId: string): Promise<HyperionTransaction> {
   const response = await fetch(
     `https://proton.eosusa.io/v2/history/get_transaction?id=${txId}`
   );
   return response.json();
 }
+```
+
+### Get Account State
+
+```typescript
+interface AccountState {
+  account_name: string;
+  total_resources: {
+    net_weight: string;
+    cpu_weight: string;
+    ram_bytes: number;
+  };
+  tokens: Array<{
+    symbol: string;
+    amount: number;
+    contract: string;
+  }>;
+}
+
+async function getAccountState(account: string): Promise<AccountState> {
+  const response = await fetch(
+    `https://proton.eosusa.io/v2/state/get_account?account=${account}`
+  );
+  return response.json();
+}
+```
+
+### Get All Token Balances
+
+```typescript
+interface TokenBalance {
+  symbol: string;
+  amount: string;
+  contract: string;
+  precision: number;
+}
+
+async function getAllBalances(account: string): Promise<TokenBalance[]> {
+  const response = await fetch(
+    `https://proton.eosusa.io/v2/state/get_tokens?account=${account}`
+  );
+  const data = await response.json();
+  return data.tokens;
+}
+
+// Returns all tokens the account holds
+const balances = await getAllBalances('alice');
+// [{ symbol: 'XPR', amount: '1000.0000', contract: 'eosio.token', precision: 4 }, ...]
+```
+
+### Get Accounts by Public Key
+
+```typescript
+async function getKeyAccounts(publicKey: string): Promise<string[]> {
+  const response = await fetch(
+    `https://proton.eosusa.io/v2/state/get_key_accounts?public_key=${publicKey}`
+  );
+  const data = await response.json();
+  return data.account_names;
+}
+
+// Find all accounts controlled by a key
+const accounts = await getKeyAccounts('PUB_K1_6MRy...');
+```
+
+### Get Table Deltas (Change History)
+
+```typescript
+async function getTableDeltas(
+  code: string,
+  table: string,
+  scope?: string
+): Promise<any[]> {
+  const url = new URL('https://proton.eosusa.io/v2/history/get_deltas');
+  url.searchParams.set('code', code);
+  url.searchParams.set('table', table);
+  if (scope) url.searchParams.set('scope', scope);
+  url.searchParams.set('limit', '100');
+
+  const response = await fetch(url);
+  const data = await response.json();
+  return data.deltas;
+}
+
+// Track changes to a specific table
+const deltas = await getTableDeltas('pricebattle', 'challenges');
+```
+
+---
+
+## Light API
+
+Light API provides fast, lightweight queries optimized for common operations.
+
+Base URL: `https://lightapi.eosamsterdam.net`
+
+### Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `/api/account/proton/{account}` | Account info |
+| `/api/balances/proton/{account}` | All token balances |
+| `/api/tokenbalance/proton/{account}/{contract}/{symbol}` | Specific token balance |
+| `/api/key/proton/{public_key}` | Accounts by key |
+| `/api/topholders/proton/{contract}/{symbol}/{limit}` | Top token holders |
+| `/api/accinfo/proton/{account}` | Detailed account info |
+| `/api/usercount/proton` | Total registered users |
+
+### Get Account Balances
+
+```typescript
+interface LightAPIBalance {
+  contract: string;
+  currency: string;
+  amount: string;
+  decimals: number;
+}
+
+async function getLightAPIBalances(account: string): Promise<LightAPIBalance[]> {
+  const response = await fetch(
+    `https://lightapi.eosamsterdam.net/api/balances/proton/${account}`
+  );
+  const data = await response.json();
+  return data.balances;
+}
+
+// Fast way to get all balances
+const balances = await getLightAPIBalances('alice');
+```
+
+### Get Specific Token Balance
+
+```typescript
+async function getTokenBalance(
+  account: string,
+  contract: string,
+  symbol: string
+): Promise<string> {
+  const response = await fetch(
+    `https://lightapi.eosamsterdam.net/api/tokenbalance/proton/${account}/${contract}/${symbol}`
+  );
+  const data = await response.json();
+  return data.balance ?? '0';
+}
+
+// Get XPR balance
+const xprBalance = await getTokenBalance('alice', 'eosio.token', 'XPR');
+
+// Get XUSDC balance
+const usdcBalance = await getTokenBalance('alice', 'xtokens', 'XUSDC');
+```
+
+### Get Accounts by Public Key
+
+```typescript
+async function getAccountsByKey(publicKey: string): Promise<string[]> {
+  const response = await fetch(
+    `https://lightapi.eosamsterdam.net/api/key/proton/${publicKey}`
+  );
+  const data = await response.json();
+  return data.accounts?.map((a: any) => a.account_name) ?? [];
+}
+```
+
+### Get Top Token Holders
+
+```typescript
+interface TokenHolder {
+  account: string;
+  amount: string;
+}
+
+async function getTopHolders(
+  contract: string,
+  symbol: string,
+  limit: number = 100
+): Promise<TokenHolder[]> {
+  const response = await fetch(
+    `https://lightapi.eosamsterdam.net/api/topholders/proton/${contract}/${symbol}/${limit}`
+  );
+  const data = await response.json();
+  return data.accounts;
+}
+
+// Get top 100 XPR holders
+const topHolders = await getTopHolders('eosio.token', 'XPR', 100);
+```
+
+### Get Total User Count
+
+```typescript
+async function getTotalUsers(): Promise<number> {
+  const response = await fetch(
+    'https://lightapi.eosamsterdam.net/api/usercount/proton'
+  );
+  const data = await response.json();
+  return data.count;
+}
+```
+
+---
+
+## Block Explorer APIs
+
+### ProtonScan
+
+ProtonScan provides a web interface and some API endpoints.
+
+```typescript
+// Link to transaction
+const txLink = `https://protonscan.io/transaction/${txId}`;
+
+// Link to account
+const accountLink = `https://protonscan.io/account/${account}`;
+
+// Link to contract
+const contractLink = `https://protonscan.io/contract/${contract}`;
+```
+
+### Bloks.io
+
+Alternative explorer with rich features.
+
+```typescript
+const bloksLink = `https://proton.bloks.io/transaction/${txId}`;
+const bloksAccount = `https://proton.bloks.io/account/${account}`;
+```
+
+---
+
+## Combined Query Service
+
+```typescript
+import { JsonRpc } from '@proton/js';
+
+class XPRQueryService {
+  private rpc: JsonRpc;
+  private hyperionBase = 'https://proton.eosusa.io';
+  private lightApiBase = 'https://lightapi.eosamsterdam.net';
+
+  constructor(endpoint: string = 'https://proton.eosusa.io') {
+    this.rpc = new JsonRpc(endpoint);
+  }
+
+  // === Table Queries (via RPC) ===
+
+  async getTableRows<T>(
+    code: string,
+    table: string,
+    options: {
+      scope?: string;
+      limit?: number;
+      lowerBound?: string | number;
+      upperBound?: string | number;
+      indexPosition?: string;
+      keyType?: string;
+      reverse?: boolean;
+    } = {}
+  ): Promise<T[]> {
+    const { rows } = await this.rpc.get_table_rows({
+      code,
+      scope: options.scope ?? code,
+      table,
+      json: true,
+      limit: options.limit ?? 100,
+      lower_bound: options.lowerBound,
+      upper_bound: options.upperBound,
+      index_position: options.indexPosition,
+      key_type: options.keyType,
+      reverse: options.reverse
+    });
+    return rows as T[];
+  }
+
+  // === Hyperion History ===
+
+  async getActions(account: string, filter?: string, limit = 100) {
+    const url = new URL(`${this.hyperionBase}/v2/history/get_actions`);
+    url.searchParams.set('account', account);
+    url.searchParams.set('limit', String(limit));
+    if (filter) url.searchParams.set('filter', filter);
+
+    const response = await fetch(url);
+    return response.json();
+  }
+
+  async getTransaction(txId: string) {
+    const response = await fetch(
+      `${this.hyperionBase}/v2/history/get_transaction?id=${txId}`
+    );
+    return response.json();
+  }
+
+  async getTransfers(account: string, symbol?: string) {
+    const url = new URL(`${this.hyperionBase}/v2/history/get_transfers`);
+    url.searchParams.set('account', account);
+    if (symbol) url.searchParams.set('symbol', symbol);
+
+    const response = await fetch(url);
+    return response.json();
+  }
+
+  // === Light API (fast queries) ===
+
+  async getAllBalances(account: string) {
+    const response = await fetch(
+      `${this.lightApiBase}/api/balances/proton/${account}`
+    );
+    return response.json();
+  }
+
+  async getTokenBalance(account: string, contract: string, symbol: string) {
+    const response = await fetch(
+      `${this.lightApiBase}/api/tokenbalance/proton/${account}/${contract}/${symbol}`
+    );
+    return response.json();
+  }
+
+  // === Common Queries ===
+
+  async getUserProfile(account: string) {
+    const rows = await this.getTableRows('eosio.proton', 'usersinfo', {
+      lowerBound: account,
+      upperBound: account,
+      limit: 1
+    });
+    return rows[0] ?? null;
+  }
+
+  async getOraclePrice(feedIndex: number): Promise<number> {
+    const rows = await this.getTableRows('oracles', 'data', {
+      lowerBound: feedIndex,
+      upperBound: feedIndex,
+      limit: 1
+    });
+    return parseFloat(rows[0]?.aggregate?.d_double ?? '0');
+  }
+
+  async getAccountRating(account: string): Promise<number> {
+    const rows = await this.getTableRows('protonrating', 'ratings', {
+      lowerBound: account,
+      upperBound: account,
+      limit: 1
+    });
+    return rows[0]?.level ?? 3;
+  }
+}
+
+export const xprQuery = new XPRQueryService();
 ```
 
 ---

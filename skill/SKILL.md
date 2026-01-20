@@ -33,71 +33,48 @@ XPR Network is an EOS-based blockchain optimized for payments and identity:
 
 Load specialized modules based on your task:
 
-### For Smart Contract Development
-Read: `smart-contracts.md`
-- Table definitions, actions, authentication
-- Build and deploy workflow
-- Testing patterns
+### Core Development
 
-### For CLI Operations
-Read: `cli-reference.md`
-- Network and key management
-- Contract deployment
-- Table queries and action execution
+| Module | Read When | Key Topics |
+|--------|-----------|------------|
+| `smart-contracts.md` | Building contracts | Tables, actions, auth, build/deploy |
+| `cli-reference.md` | Using CLI tools | Network, keys, deploy, queries |
+| `web-sdk.md` | Building dApps | Wallet connect, transactions, sessions |
+| `backend-patterns.md` | Server-side dev | Programmatic signing, bots, security |
+| `rpc-queries.md` | Reading chain data | RPC, Hyperion API, Light API, pagination |
+| `testing-debugging.md` | Testing contracts | Unit tests, testnet, debugging, logs |
+| `accounts-permissions.md` | Account management | Create accounts, permissions, multisig |
 
-### For Frontend/dApp Development
-Read: `web-sdk.md`
-- Wallet connection with @proton/web-sdk
-- Transaction signing
-- Session management
+### Token & Identity
 
-### For Backend/Server-Side Development
-Read: `backend-patterns.md`
-- Programmatic transaction signing
-- Automated operations and bots
-- Security best practices
+| Module | Read When | Key Topics |
+|--------|-----------|------------|
+| `token-creation.md` | Creating tokens | Fungible tokens, issuance, vesting |
+| `webauth-identity.md` | User identity | WebAuth wallets, KYC, profiles, trust |
+| `nfts-atomicassets.md` | NFT development | Collections, schemas, minting, marketplace |
 
-### For Reading Blockchain Data
-Read: `rpc-queries.md`
-- RPC endpoints
-- Table query patterns
-- Pagination and secondary indexes
+### DeFi & Trading
 
-### For NFT Development
-Read: `nfts-atomicassets.md`
-- AtomicAssets standard (collections, schemas, templates, assets)
-- Minting and transfers
-- Marketplace integration
+| Module | Read When | Key Topics |
+|--------|-----------|------------|
+| `metalx-dex.md` | DEX integration | Complete MetalX API, orders, swaps |
+| `defi-trading.md` | Trading bots/DeFi | Grid bots, market makers, perps architecture |
+| `loan-protocol.md` | Lending protocol | LOAN protocol, supply, borrow, liquidations |
 
-### For MetalX DEX Trading
-Read: `metalx-dex.md`
-- Complete MetalX API reference
-- Order book trading, swaps, liquidity pools
-- Trading service class and patterns
+### Safety & Reference
 
-### For DeFi/Trading Architecture
-Read: `defi-trading.md`
-- Trading bot patterns (grid, market maker)
-- Building perpetual futures DEX
-- Advanced DeFi building blocks
+| Module | Read When | Key Topics |
+|--------|-----------|------------|
+| `safety-guidelines.md` | **BEFORE modifying contracts** | Table rules, deployment safety, recovery |
+| `troubleshooting.md` | Debugging errors | Common errors, solutions, diagnostics |
+| `examples.md` | Learning patterns | PriceBattle, ProtonWall, ProtonRating |
+| `resources.md` | Finding endpoints | RPC URLs, docs, explorers, community |
 
 ### CRITICAL: Before Modifying Contracts
-Read: `safety-guidelines.md`
+**Read: `safety-guidelines.md`**
 - **NEVER modify existing table structures with data**
 - Pre-deployment checklist
 - Recovery procedures
-
-### For Real-World Examples
-Read: `examples.md`
-- PriceBattle: PvP prediction game
-- ProtonWall: Social feed
-- ProtonRating: Trust/reputation system
-
-### For Endpoints and Resources
-Read: `resources.md`
-- RPC endpoints (mainnet/testnet)
-- Official documentation links
-- Community resources
 
 ---
 

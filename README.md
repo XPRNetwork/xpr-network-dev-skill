@@ -48,6 +48,7 @@ Copy relevant sections from `skill/SKILL.md` directly into your project's `CLAUD
 
 ## Skill Modules
 
+### Core Development
 | Module | Description |
 |--------|-------------|
 | [SKILL.md](skill/SKILL.md) | Main entry point with overview and quick reference |
@@ -55,11 +56,29 @@ Copy relevant sections from `skill/SKILL.md` directly into your project's `CLAUD
 | [cli-reference.md](skill/cli-reference.md) | Complete @proton/cli command reference |
 | [web-sdk.md](skill/web-sdk.md) | Frontend integration with @proton/web-sdk |
 | [backend-patterns.md](skill/backend-patterns.md) | Server-side signing, automated operations, bots |
-| [rpc-queries.md](skill/rpc-queries.md) | Table reading and RPC patterns |
+| [rpc-queries.md](skill/rpc-queries.md) | Table reading, Hyperion API, Light API |
+| [testing-debugging.md](skill/testing-debugging.md) | Unit testing, testnet workflows, debugging |
+| [accounts-permissions.md](skill/accounts-permissions.md) | Account creation, permissions, multisig |
+
+### Tokens & Identity
+| Module | Description |
+|--------|-------------|
+| [token-creation.md](skill/token-creation.md) | Creating fungible tokens, issuance, vesting |
+| [webauth-identity.md](skill/webauth-identity.md) | WebAuth wallets, KYC, profiles, trust ratings |
 | [nfts-atomicassets.md](skill/nfts-atomicassets.md) | NFT development with AtomicAssets standard |
-| [metalx-dex.md](skill/metalx-dex.md) | MetalX DEX API, order book trading, swaps |
+
+### DeFi & Trading
+| Module | Description |
+|--------|-------------|
+| [metalx-dex.md](skill/metalx-dex.md) | Complete MetalX DEX API reference |
 | [defi-trading.md](skill/defi-trading.md) | Trading bots, perps architecture, DeFi patterns |
+| [loan-protocol.md](skill/loan-protocol.md) | LOAN lending protocol integration |
+
+### Safety & Reference
+| Module | Description |
+|--------|-------------|
 | [safety-guidelines.md](skill/safety-guidelines.md) | CRITICAL: Table modification rules, deployment safety |
+| [troubleshooting.md](skill/troubleshooting.md) | Common errors, solutions, diagnostics |
 | [examples.md](skill/examples.md) | Real-world patterns from production contracts |
 | [resources.md](skill/resources.md) | Endpoints, links, community resources |
 
@@ -83,22 +102,33 @@ Claude will load specialized modules on demand based on your queries.
 - Table definitions (`@table`, `@primary`, singletons)
 - Actions, authentication, inline actions
 - Build and deploy workflow
+- Unit testing with `@proton/vert`
 
 ### CLI Operations
 - Network management (`chain:set`, `chain:get`)
 - Key management (`key:add`, `key:list`)
 - Contract deployment (`contract:set`)
 - Table queries and action execution
+- Account creation and permissions
 
 ### Frontend Integration
 - `@proton/web-sdk` for wallet connection
 - Session management and transaction signing
 - RPC queries with `@proton/js`
+- WebAuth and KYC verification
 
 ### Backend Development
 - Server-side transaction signing
 - Automated bots and scheduled tasks
 - Security best practices for key management
+- Hyperion and Light API integration
+
+### Token & Identity
+- Fungible token creation and management
+- Token vesting and airdrops
+- WebAuth wallet integration
+- User profiles and KYC status
+- Trust rating system
 
 ### NFT Development
 - AtomicAssets standard (collections, schemas, templates, assets)
@@ -109,12 +139,14 @@ Claude will load specialized modules on demand based on your queries.
 - MetalX DEX integration (order book, trades)
 - Trading bot patterns (grid bot, market maker)
 - Perpetual futures architecture and building blocks
+- LOAN lending protocol (supply, borrow, liquidations)
 
-### Safety Guidelines
+### Safety & Troubleshooting
 - **CRITICAL**: Never modify existing table structures with data
 - Pre-deployment checklist
 - Recovery procedures
 - Multi-contract deployment safety
+- Common errors and solutions
 
 ## Contributing
 
