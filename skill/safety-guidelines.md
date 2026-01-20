@@ -241,14 +241,14 @@ proton contract:set mycontract ./assembly/target
 
 ## Multi-Contract Account Safety
 
-If you manage multiple contracts:
+If you manage multiple contracts, maintain a clear mapping:
 
 | Account | Contract | Purpose |
 |---------|----------|---------|
-| `protonlink` | User profiles | Links, avatars |
-| `protonwall` | Social feed | Posts, replies |
-| `protonrating` | Trust ratings | Account ratings |
-| `pricebattle` | Price game | PvP predictions |
+| `myapp` | Main app | Core logic |
+| `myapptoken` | Token | Custom token |
+| `myappnft` | NFTs | Collection |
+| `myappgame` | Game | Gameplay |
 
 **Before EVERY deployment**:
 1. Check `pwd` - am I in the right project?

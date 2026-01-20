@@ -143,18 +143,18 @@ stream.subscribeActions('atomicassets', 'mintasset', (action) => {
 Monitor table changes in real-time:
 
 ```typescript
-// Watch for new challenges in PriceBattle
-stream.subscribeDeltas('pricebattle', 'challenges', (delta) => {
+// Watch for user profile changes
+stream.subscribeDeltas('eosio.proton', 'usersinfo', (delta) => {
   if (delta.present) {
-    console.log('New/updated challenge:', delta.data);
+    console.log('Profile updated:', delta.data);
   } else {
-    console.log('Challenge removed:', delta.primary_key);
+    console.log('Profile removed:', delta.primary_key);
   }
 });
 
-// Watch for rating changes
-stream.subscribeDeltas('protonrating', 'ratings', (delta) => {
-  console.log('Rating changed:', delta.data);
+// Watch for oracle price updates
+stream.subscribeDeltas('oracles', 'data', (delta) => {
+  console.log('Price updated:', delta.data);
 });
 ```
 

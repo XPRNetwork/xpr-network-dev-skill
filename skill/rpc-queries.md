@@ -86,9 +86,9 @@ The primary method for reading table data.
 
 ```typescript
 const { rows } = await rpc.get_table_rows({
-  code: 'protonrating',      // Contract account
-  scope: 'protonrating',     // Table scope (usually same as code)
-  table: 'ratings',          // Table name
+  code: 'eosio.proton',      // Contract account
+  scope: 'eosio.proton',     // Table scope (usually same as code)
+  table: 'usersinfo',        // Table name
   json: true,                // Return JSON (not binary)
   limit: 100                 // Max rows to return
 });
@@ -112,17 +112,17 @@ const { rows } = await rpc.get_table_rows({
 ### Exact Match Query
 
 ```typescript
-// Get specific account rating
+// Get specific user profile
 const { rows } = await rpc.get_table_rows({
-  code: 'protonrating',
-  scope: 'protonrating',
-  table: 'ratings',
-  lower_bound: 'someuser',
-  upper_bound: 'someuser',
+  code: 'eosio.proton',
+  scope: 'eosio.proton',
+  table: 'usersinfo',
+  lower_bound: 'alice',
+  upper_bound: 'alice',
   limit: 1
 });
 
-const rating = rows.length > 0 ? rows[0] : null;
+const userProfile = rows.length > 0 ? rows[0] : null;
 ```
 
 ### Range Query
@@ -330,16 +330,6 @@ class ProtonRPC {
       limit: 1
     });
     return rows[0] ?? null;
-  }
-
-  // Account rating
-  async getAccountRating(account: string): Promise<number> {
-    const rows = await this.getTable('protonrating', 'ratings', {
-      lowerBound: account,
-      upperBound: account,
-      limit: 1
-    });
-    return rows[0]?.level ?? 3;  // Default level 3 (unknown)
   }
 
   // Token balance
@@ -856,14 +846,6 @@ class XPRQueryService {
     return parseFloat(rows[0]?.aggregate?.d_double ?? '0');
   }
 
-  async getAccountRating(account: string): Promise<number> {
-    const rows = await this.getTableRows('protonrating', 'ratings', {
-      lowerBound: account,
-      upperBound: account,
-      limit: 1
-    });
-    return rows[0]?.level ?? 3;
-  }
 }
 
 export const xprQuery = new XPRQueryService();
@@ -874,13 +856,13 @@ export const xprQuery = new XPRQueryService();
 ## cURL Examples
 
 ```bash
-# Basic table query
+# Basic table query - get user profiles
 curl -s -X POST https://proton.eosusa.io/v1/chain/get_table_rows \
   -H "Content-Type: application/json" \
   -d '{
-    "code": "protonrating",
-    "scope": "protonrating",
-    "table": "ratings",
+    "code": "eosio.proton",
+    "scope": "eosio.proton",
+    "table": "usersinfo",
     "json": true,
     "limit": 10
   }'

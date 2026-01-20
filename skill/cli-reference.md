@@ -197,10 +197,10 @@ proton action eosio.token transfer \
 # Initialize contract
 proton action mycontract init '{"owner":"mycontract"}' mycontract
 
-# Set rating (custom contract)
-proton action protonrating setrating \
-  '{"account":"badactor","level":1,"reason":"scam"}' \
-  paulgnz
+# Vote for block producers
+proton action eosio voteproducer \
+  '{"voter":"myaccount","proxy":"","producers":["bp1","bp2","bp3","bp4"]}' \
+  myaccount
 
 # Update permissions
 proton action eosio updateauth '{
@@ -227,8 +227,8 @@ proton action eosio updateauth '{
 proton table CONTRACT TABLE [SCOPE]
 
 # Default scope is same as contract
-proton table protonrating ratings
-proton table protonrating ratings protonrating  # Explicit scope
+proton table eosio.proton usersinfo
+proton table eosio.proton usersinfo eosio.proton  # Explicit scope
 ```
 
 ### Query Options

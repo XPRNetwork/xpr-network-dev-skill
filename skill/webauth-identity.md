@@ -140,76 +140,6 @@ async function updateProfile(
 
 ---
 
-## Integration with Trust Ratings
-
-Combine KYC status with the `protonrating` contract for trust levels.
-
-### Trust Level Resolution
-
-```typescript
-async function getAccountTrustLevel(account: string): Promise<number> {
-  // 1. Check explicit rating
-  const { rows: ratingRows } = await rpc.get_table_rows({
-    code: 'protonrating',
-    scope: 'protonrating',
-    table: 'ratings',
-    lower_bound: account,
-    upper_bound: account,
-    limit: 1
-  });
-
-  if (ratingRows.length > 0) {
-    return ratingRows[0].level;  // Explicit rating overrides
-  }
-
-  // 2. Check KYC status
-  const profile = await getUserProfile(account);
-
-  if (profile?.kyc?.length > 0) {
-    return 4;  // Verified (KYC'd)
-  }
-
-  return 3;  // Unknown (default)
-}
-```
-
-### Trust Badge Component
-
-```tsx
-import React from 'react';
-
-interface TrustBadgeProps {
-  level: number;
-  size?: 'small' | 'medium' | 'large';
-}
-
-const TRUST_LEVELS = {
-  1: { name: 'Scammer', color: '#ff4757', icon: '⚠️' },
-  2: { name: 'Suspicious', color: '#ffa502', icon: '⚠' },
-  3: { name: 'Unknown', color: '#747d8c', icon: '?' },
-  4: { name: 'Verified', color: '#2ed573', icon: '✓' },
-  5: { name: 'Highly Trusted', color: '#7543E3', icon: '★' },
-};
-
-export function TrustBadge({ level, size = 'medium' }: TrustBadgeProps) {
-  const trust = TRUST_LEVELS[level] ?? TRUST_LEVELS[3];
-
-  return (
-    <span style={{
-      backgroundColor: trust.color,
-      color: 'white',
-      padding: '2px 8px',
-      borderRadius: '4px',
-      fontSize: size === 'small' ? '12px' : '14px'
-    }}>
-      {trust.icon} {trust.name}
-    </span>
-  );
-}
-```
-
----
-
 ## Display User Info
 
 ### Avatar Component
@@ -250,18 +180,16 @@ interface UserCardProps {
 
 export function UserCard({ account }: UserCardProps) {
   const [profile, setProfile] = useState<UserInfo | null>(null);
-  const [trustLevel, setTrustLevel] = useState(3);
 
   useEffect(() => {
     async function load() {
       const p = await getUserProfile(account);
       setProfile(p);
-
-      const trust = await getAccountTrustLevel(account);
-      setTrustLevel(trust);
     }
     load();
   }, [account]);
+
+  const isKYC = profile?.kyc?.length > 0;
 
   return (
     <div className="user-card">
@@ -269,68 +197,9 @@ export function UserCard({ account }: UserCardProps) {
       <div>
         <h3>{profile?.name || account}</h3>
         <span className="account">@{account}</span>
-        <TrustBadge level={trustLevel} />
-        {profile?.verified && <span className="checkmark">✓</span>}
+        {profile?.verified && <span className="checkmark">✓ Verified</span>}
+        {isKYC && <span className="kyc-badge">KYC</span>}
       </div>
-    </div>
-  );
-}
-```
-
----
-
-## Blocking Scammers
-
-### Payment Blocking
-
-```typescript
-const BLOCKED_LEVELS = [1];  // Level 1 = Scammer
-
-async function canReceivePayment(account: string): Promise<boolean> {
-  const level = await getAccountTrustLevel(account);
-  return !BLOCKED_LEVELS.includes(level);
-}
-
-// Before processing payment
-async function processPayment(recipient: string, amount: string) {
-  const canReceive = await canReceivePayment(recipient);
-
-  if (!canReceive) {
-    throw new Error('Payments to this account are blocked');
-  }
-
-  // Process payment...
-}
-```
-
-### Warning Banner
-
-```tsx
-interface TrustWarningProps {
-  level: number;
-  reason?: string;
-}
-
-export function TrustWarning({ level, reason }: TrustWarningProps) {
-  if (level > 2) return null;  // Only show for levels 1-2
-
-  const isScammer = level === 1;
-
-  return (
-    <div style={{
-      backgroundColor: isScammer ? '#ff4757' : '#ffa502',
-      color: 'white',
-      padding: '12px',
-      borderRadius: '8px',
-      marginBottom: '16px'
-    }}>
-      <strong>
-        {isScammer ? '⚠️ Warning: Known Scammer' : '⚠ Caution: Suspicious Account'}
-      </strong>
-      {reason && <p>{reason}</p>}
-      {isScammer && (
-        <p>Payments to this account are blocked for your protection.</p>
-      )}
     </div>
   );
 }

@@ -1,6 +1,8 @@
-# Real-World Contract Examples
+# Contract Pattern Examples
 
-This document contains patterns from production XPR Network contracts: PriceBattle (PvP game), ProtonWall (social feed), and ProtonRating (trust system).
+This document contains common smart contract patterns illustrated through example contracts. These examples demonstrate real-world patterns you can adapt for your own dApps.
+
+**Note**: The contracts shown here (PriceBattle, ProtonWall, ProtonRating) are community examples for educational purposes, not official XPR Network contracts.
 
 ---
 
@@ -311,9 +313,9 @@ private refund(to: Name, quantity: Asset, memo: string): void {
 
 ---
 
-## ProtonRating: Trust/Reputation System
+## Trust/Reputation System Pattern
 
-Account rating system to protect users from scammers.
+Example pattern for an account rating system to protect users from bad actors.
 
 ### Trust Levels
 
