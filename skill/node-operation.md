@@ -92,6 +92,10 @@ p2p-server-address = YOUR_EXTERNAL_IP:9876
 # Chain database
 chain-state-db-size-mb = 16384
 
+# SECURITY: Limit connections per host to prevent connection exhaustion attacks
+p2p-max-nodes-per-host = 2
+max-clients = 100
+
 # Plugins
 plugin = eosio::chain_api_plugin
 plugin = eosio::http_plugin
@@ -102,9 +106,30 @@ plugin = eosio::net_api_plugin
 http-server-address = 0.0.0.0:8888
 access-control-allow-origin = *
 
-# P2P peers (add multiple for redundancy)
-p2p-peer-address = peer1.xprnetwork.org:9876
-p2p-peer-address = peer2.xprnetwork.org:9876
+# Billing
+disable-subjective-p2p-billing = false
+```
+
+### Mainnet P2P Peers (Verified January 2026)
+
+```ini
+p2p-peer-address = api.protonnz.com:9876
+p2p-peer-address = proton.protonuk.io:9876
+p2p-peer-address = proton.p2p.eosusa.io:9879
+p2p-peer-address = proton.cryptolions.io:9876
+p2p-peer-address = protonp2p.eoscafeblock.com:9130
+p2p-peer-address = p2p.alvosec.com:9876
+p2p-peer-address = p2p.totalproton.tech:9831
+p2p-peer-address = mainnet.brotonbp.com:9876
+p2p-peer-address = proton.eu.eosamsterdam.net:9103
+p2p-peer-address = protonp2p.blocksindia.com:9876
+p2p-peer-address = p2p-protonmain.saltant.io:9876
+p2p-peer-address = protonp2p.ledgerwise.io:23877
+p2p-peer-address = proton-seed.eosiomadrid.io:9876
+p2p-peer-address = proton.genereos.io:9876
+p2p-peer-address = proton-public.neftyblocks.com:19876
+p2p-peer-address = p2p-proton.eosarabia.net:9876
+p2p-peer-address = p2p.luminaryvisn.com:9876
 ```
 
 ### Firewall Configuration
@@ -157,6 +182,28 @@ git clone https://github.com/XPRNetwork/xpr-testnet.start.git ./
 
 ```
 71ee83bcf52142d61019d95f9cc5427ba6a0d7ff8accd9e2088ae2abeaf3d3dd
+```
+
+### Testnet P2P Peers (Verified January 2026)
+
+```ini
+p2p-peer-address = p2p-protontest.saltant.io:9879
+p2p-peer-address = testnet-p2p.alvosec.com:9878
+p2p-peer-address = proton-seed-testnet.eosiomadrid.io:9877
+p2p-peer-address = proton.testnet.protonuk.io:9876
+p2p-peer-address = p2p.testnet.totalproton.tech:9842
+p2p-peer-address = testnet.brotonbp.com:9877
+p2p-peer-address = p2p-xpr-test.danemarkbp.com:9876
+p2p-peer-address = tn1.protonnz.com:9876
+p2p-peer-address = xpr-testnet-p2p.bloxprod.io:9875
+p2p-peer-address = peer-xprtest.blocksforge.com:9876
+p2p-peer-address = test.proton.p2p.eosusa.io:19879
+p2p-peer-address = p2p.proton-testnet.genereos.io:9876
+p2p-peer-address = protontest.eu.eosamsterdam.net:9905
+p2p-peer-address = proton-testnet.cryptolions.io:9874
+p2p-peer-address = testnet-p2p.xprlabs.org:9870
+p2p-peer-address = p2p-testnet-proton.eosarabia.net:9876
+p2p-peer-address = proton-p2p-testnet.neftyblocks.com:19876
 ```
 
 ### Testnet Resources

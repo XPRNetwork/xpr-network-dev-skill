@@ -141,6 +141,14 @@ https://explorer.xprnetwork.org/account/CONTRACT_NAME?tab=contract
 |------------|-------------|
 | [XPRNetwork/proton-ts-sc-examples](https://github.com/XPRNetwork/proton-ts-sc-examples) | Official example contracts |
 
+### Node Infrastructure
+
+| Repository | Description |
+|------------|-------------|
+| [XPRNetwork/xpr.start](https://github.com/XPRNetwork/xpr.start) | Mainnet node setup scripts and configs |
+| [XPRNetwork/xpr-testnet.start](https://github.com/XPRNetwork/xpr-testnet.start) | Testnet node setup scripts and configs |
+| [XPRNetwork/dex-bot](https://github.com/XPRNetwork/dex-bot) | MetalX DEX trading bot |
+
 ---
 
 ## NPM Packages
