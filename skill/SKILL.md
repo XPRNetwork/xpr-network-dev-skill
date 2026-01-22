@@ -199,6 +199,7 @@ const { link, session } = await ProtonWebSDK({
 | `@proton/cli` | Command-line tools | `npm i -g @proton/cli` |
 | `proton-tsc` | Contract development | `npm i proton-tsc` |
 | `@proton/web-sdk` | Frontend wallet integration | `npm i @proton/web-sdk` |
+| `@proton/link` | Mobile wallet transport (required with web-sdk) | `npm i @proton/link` |
 | `@proton/js` | RPC queries | `npm i @proton/js` |
 
 ## Official Resources

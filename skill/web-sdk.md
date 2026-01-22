@@ -5,15 +5,18 @@ This guide covers wallet connection and transaction signing for web applications
 ## Installation
 
 ```bash
-npm install @proton/web-sdk
+npm install @proton/web-sdk @proton/link
 # or
-yarn add @proton/web-sdk
+yarn add @proton/web-sdk @proton/link
 ```
+
+**Important:** The `@proton/link` package is required for mobile wallet support. See [Mobile Wallet Support](#mobile-wallet-support) for details.
 
 ## Quick Start
 
 ```typescript
 import ProtonWebSDK from '@proton/web-sdk';
+import '@proton/link'; // Required for mobile wallet support
 
 // Login
 const { link, session } = await ProtonWebSDK({
@@ -468,6 +471,69 @@ async function safeTransact(actions: any[]) {
   }
 }
 ```
+
+---
+
+## Mobile Wallet Support
+
+For mobile wallet signing to work (WebAuth iOS/Android app), you **must** install and import `@proton/link`.
+
+### Why @proton/link is Required
+
+The `@proton/link` package provides the transport layer for mobile deep linking. Without it, the SDK cannot communicate with the WebAuth mobile app to request transaction signatures.
+
+### Installation
+
+```bash
+npm install @proton/web-sdk @proton/link
+```
+
+### Import Pattern
+
+```typescript
+import ProtonWebSDK from '@proton/web-sdk';
+import '@proton/link'; // Required - enables mobile deep linking transport
+```
+
+**Note**: The `@proton/link` import doesn't expose any API you need to call directly. Simply importing it registers the transport handlers needed for mobile wallet communication.
+
+### Dynamic Import Pattern (SSR/Next.js)
+
+For server-side rendering frameworks:
+
+```typescript
+if (typeof window !== 'undefined') {
+  const sdkReady = Promise.all([
+    import('@proton/web-sdk').then((mod) => {
+      ProtonWebSDK = mod.default;
+    }),
+    import('@proton/link')  // Critical for mobile
+  ]).then(() => {});
+}
+```
+
+### Symptoms of Missing @proton/link
+
+If you forget to install/import `@proton/link`:
+- Desktop signing works normally
+- Mobile browser shows "processing" indefinitely
+- WebAuth mobile app never opens for authorization
+- May show "unknown requestor" error
+
+### Safari iOS Popup Blocker
+
+Safari iOS blocks popups by default, which prevents the WebAuth browser wallet from opening. Users on Safari iOS should either:
+
+1. Disable popup blocker: **Settings** > **Safari** > **Block Pop-ups** OFF
+2. Use the WebAuth mobile app instead of the browser wallet (recommended)
+3. Use a different browser (Chrome, Firefox)
+
+**Developer tip**: Show a help message after several seconds of "processing" to guide users to check their popup blocker settings or switch to the WebAuth mobile app.
+
+### Recommended Versions
+
+- `@proton/web-sdk@^4.4.1` or later
+- `@proton/link@^3.2.3-27` or later
 
 ---
 

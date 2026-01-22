@@ -225,6 +225,39 @@ await login();
 - Force quit WebAuth iOS app before switching accounts
 - Use webauth.com web wallet instead
 
+### Mobile signing stuck on "Processing"
+
+**Symptom**: Transaction signing works on desktop but hangs indefinitely on mobile. WebAuth app doesn't open.
+
+**Cause**: Missing `@proton/link` package which provides mobile transport.
+
+**Solution**:
+```bash
+npm install @proton/link
+```
+
+Then add the import (no need to use it directly):
+```typescript
+import ProtonWebSDK from '@proton/web-sdk';
+import '@proton/link'; // Required for mobile
+```
+
+### Safari iOS: WebAuth popup blocked
+
+**Symptom**: On Safari iOS, clicking actions that require wallet signing shows "Processing..." forever. The WebAuth popup never opens.
+
+**Cause**: Safari iOS blocks popups by default, and WebAuth browser wallet uses popups for signing.
+
+**Solution**:
+1. Go to **Settings** > **Safari** on iOS device
+2. Turn **OFF** "Block Pop-ups"
+
+Alternatively, users can:
+- Use the WebAuth mobile app (deep links work without popups)
+- Use a different browser like Chrome on iOS
+
+**Developer tip**: Show a help message after several seconds of stuck "processing" to guide users.
+
 ### "Cannot read property of null"
 
 **Cause**: Session not initialized.

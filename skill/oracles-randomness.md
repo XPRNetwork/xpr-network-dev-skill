@@ -344,6 +344,190 @@ class CoinFlip extends Contract {
 }
 ```
 
+### Real-World Example: Slot Machine
+
+This example demonstrates a more complex RNG use case with weighted symbol selection (based on the xpr-slots contract):
+
+```typescript
+import {
+  Contract, Table, TableStore, Name, Asset,
+  InlineAction, PermissionLevel, ActionData,
+  check, requireAuth, currentTimeSec, Checksum256,
+  transfer
+} from 'proton-tsc';
+
+// Pending game tracking
+@table("games")
+class Game extends Table {
+  constructor(
+    public id: u64 = 0,
+    public player: Name = new Name(),
+    public bet: u64 = 0,
+    public timestamp: u64 = 0
+  ) { super(); }
+
+  @primary
+  get primary(): u64 { return this.id; }
+}
+
+// Spin results (historical record)
+@table("spinresults")
+class SpinResult extends Table {
+  constructor(
+    public id: u64 = 0,
+    public player: Name = new Name(),
+    public reel1: u8 = 0,
+    public reel2: u8 = 0,
+    public reel3: u8 = 0,
+    public betAmount: u64 = 0,
+    public payout: u64 = 0,
+    public jackpotWon: boolean = false,
+    public timestamp: u64 = 0
+  ) { super(); }
+
+  @primary
+  get primary(): u64 { return this.id; }
+}
+
+@contract
+class SlotMachine extends Contract {
+  gamesTable: TableStore<Game> = new TableStore<Game>(this.receiver);
+  resultsTable: TableStore<SpinResult> = new TableStore<SpinResult>(this.receiver);
+
+  // Symbol weights (higher = more common)
+  // Total: 125 (for easy percentage calculation)
+  static readonly WEIGHTS: u8[] = [40, 30, 25, 20, 10]; // Lemon, Cherry, Bell, Bar, Seven
+  static readonly TOTAL_WEIGHT: u8 = 125;
+
+  // Handle incoming transfer (player sends XPR to play)
+  @action("transfer", notify)
+  onTransfer(from: Name, to: Name, quantity: Asset, memo: string): void {
+    if (to != this.receiver || from == this.receiver) return;
+    if (memo != "spin") return;
+
+    check(quantity.amount >= 10000, "Minimum bet: 1 XPR");
+    check(quantity.amount <= 10000000, "Maximum bet: 1000 XPR");
+
+    // Check no pending game for this player
+    // (prevents double-spin exploit)
+    let hasPending = false;
+    let cursor = this.gamesTable.first();
+    while (cursor) {
+      if (cursor.player == from) {
+        hasPending = true;
+        break;
+      }
+      cursor = this.gamesTable.next(cursor);
+    }
+    check(!hasPending, "Pending spin exists - please wait");
+
+    // Create pending game
+    const gameId = this.gamesTable.availablePrimaryKey;
+    const game = new Game(gameId, from, quantity.amount, currentTimeSec());
+    this.gamesTable.store(game, this.receiver);
+
+    // Request random from oracle
+    const signingValue = gameId ^ from.N ^ currentTimeSec();
+    new InlineAction<RequestRandParams>("requestrand")
+      .act(Name.fromString("rng"), new PermissionLevel(this.receiver))
+      .send(new RequestRandParams(gameId, signingValue, this.receiver));
+  }
+
+  @action("receiverand")
+  receiveRand(assoc_id: u64, random_value: Checksum256): void {
+    requireAuth(Name.fromString("rng"));
+
+    const game = this.gamesTable.requireGet(assoc_id, "Game not found");
+
+    // Extract 3 independent random values from the 32-byte hash
+    // Using different portions ensures independence
+    const rand1 = this.bytesToU64(random_value.data, 0);   // bytes 0-7
+    const rand2 = this.bytesToU64(random_value.data, 8);   // bytes 8-15
+    const rand3 = this.bytesToU64(random_value.data, 16);  // bytes 16-23
+
+    // Convert to weighted symbols
+    const reel1 = this.getWeightedSymbol(rand1);
+    const reel2 = this.getWeightedSymbol(rand2);
+    const reel3 = this.getWeightedSymbol(rand3);
+
+    // Calculate payout
+    const payout = this.calculatePayout(reel1, reel2, reel3, game.bet);
+    const isJackpot = reel1 == 4 && reel2 == 4 && reel3 == 4; // Three 7s
+
+    // Store result
+    const result = new SpinResult(
+      this.resultsTable.availablePrimaryKey,
+      game.player, reel1, reel2, reel3,
+      game.bet, payout, isJackpot, currentTimeSec()
+    );
+    this.resultsTable.store(result, this.receiver);
+
+    // Remove pending game
+    this.gamesTable.remove(game);
+
+    // Pay winner
+    if (payout > 0) {
+      transfer(this.receiver, game.player,
+        new Asset(payout, new Symbol("XPR", 4)), "Slot win!");
+    }
+  }
+
+  // Convert random u64 to weighted symbol index
+  private getWeightedSymbol(random: u64): u8 {
+    const value = <u8>(random % SlotMachine.TOTAL_WEIGHT);
+    let cumulative: u8 = 0;
+
+    for (let i = 0; i < SlotMachine.WEIGHTS.length; i++) {
+      cumulative += SlotMachine.WEIGHTS[i];
+      if (value < cumulative) {
+        return <u8>i;
+      }
+    }
+    return 0;
+  }
+
+  // Payout calculation based on symbol combination
+  private calculatePayout(r1: u8, r2: u8, r3: u8, bet: u64): u64 {
+    // Three of a kind
+    if (r1 == r2 && r2 == r3) {
+      if (r1 == 4) return this.getJackpotPayout();  // 7-7-7 Jackpot
+      if (r1 == 1) return bet * 5;                   // Cherry 5x
+      if (r1 == 3) return bet * 3;                   // Bar 3x
+      if (r1 == 2) return bet * 2;                   // Bell 2x
+      if (r1 == 0) return bet * 3 / 2;               // Lemon 1.5x
+    }
+    // Any two matching
+    if (r1 == r2 || r2 == r3 || r1 == r3) {
+      return bet / 2;                                // 0.5x
+    }
+    return 0;
+  }
+
+  private bytesToU64(bytes: u8[], offset: i32): u64 {
+    let result: u64 = 0;
+    for (let i = 0; i < 8; i++) {
+      result = (result << 8) | <u64>bytes[offset + i];
+    }
+    return result;
+  }
+
+  private getJackpotPayout(): u64 {
+    // Return jackpot pool amount (implementation depends on your design)
+    return 100000000; // 10,000 XPR minimum
+  }
+}
+```
+
+**Key patterns from this example:**
+
+1. **Pending game tracking**: Prevent players from spamming spins while one is pending
+2. **Multiple random values**: Extract independent values from different portions of the 32-byte hash
+3. **Weighted randomness**: Use cumulative weights for non-uniform probability distributions
+4. **Transfer notification**: Trigger game logic on incoming token transfer with memo
+5. **Historical records**: Store spin results for transparency/verification
+
+---
+
 ### RNG Best Practices
 
 1. **Unique Signing Values**
