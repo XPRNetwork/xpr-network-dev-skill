@@ -10,6 +10,17 @@ repository: https://github.com/XPRNetwork/xpr-network-dev-skill
 
 This skill provides comprehensive knowledge for developing on XPR Network, a fast, gas-free blockchain with WebAuthn wallet support.
 
+> **IMPORTANT DISCLAIMER: AI-Generated Smart Contract Code**
+>
+> Smart contracts handle real assets and are immutable once deployed. AI-generated code, including code produced with this skill, should **always be reviewed by an experienced developer** before deployment to mainnet.
+>
+> - **Test thoroughly on testnet** before any mainnet deployment
+> - **Have code reviewed** by someone familiar with XPR Network/EOSIO smart contracts
+> - **Audit critical contracts** - consider professional security audits for contracts handling significant value
+> - **Understand the code** - don't deploy code you don't fully understand
+>
+> Claude can accelerate development and help with patterns, but it does not replace proper code review, testing, and auditing practices.
+
 ## XPR Network Overview
 
 XPR Network is an EOS-based blockchain optimized for payments and identity:

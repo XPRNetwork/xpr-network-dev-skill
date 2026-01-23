@@ -2,6 +2,8 @@
 
 This guide covers AssemblyScript/TypeScript smart contract development using `@proton/ts-contracts` (proton-tsc).
 
+> **Before deploying to mainnet**: Always review AI-generated code, test thoroughly on testnet, and consider having experienced developers review critical contracts. See `safety-guidelines.md` for essential deployment safety rules.
+
 ## Overview
 
 XPR Network smart contracts are written in AssemblyScript (a TypeScript-like language that compiles to WebAssembly). The SDK provides decorators and utilities for defining tables, actions, and interacting with the blockchain.

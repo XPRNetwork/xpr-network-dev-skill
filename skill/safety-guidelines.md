@@ -4,6 +4,25 @@ This document contains **critical safety rules** for XPR Network smart contract 
 
 ---
 
+## AI-Generated Code Disclaimer
+
+> **Smart contracts are immutable and handle real assets. AI-generated code requires human review before deployment.**
+
+When using Claude or any AI assistant for smart contract development:
+
+1. **Always review generated code** - AI can produce functional but suboptimal or insecure code
+2. **Test on testnet first** - Never deploy untested code to mainnet
+3. **Understand what the code does** - Don't deploy code you can't explain
+4. **Get a second opinion** - Have another developer review critical contracts
+5. **Consider professional audits** - For contracts handling significant value
+
+Claude accelerates development but does not replace:
+- Code review by experienced developers
+- Comprehensive testing
+- Security audits for production contracts
+
+---
+
 ## The Golden Rule
 
 > **NEVER modify existing table structures once deployed with data.**
