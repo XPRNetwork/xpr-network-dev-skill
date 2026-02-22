@@ -14,6 +14,14 @@ XPR Network is a fast, gas-free blockchain with WebAuthn wallet support. Key fea
 
 ## Installation
 
+### The easy way:
+
+```bash
+git clone https://github.com/XPRNetwork/xpr-network-dev-skill.git
+cd xpr-network-dev-skill
+./install.sh
+```
+
 ### Method 1: Add to Claude Code settings
 
 Add this skill to your Claude Code settings file (`~/.claude/settings.json`):
@@ -53,12 +61,14 @@ This skill is just structured markdown - it works with any AI coding assistant, 
 ### Cursor
 
 **Option A: .cursorrules**
+
 ```bash
 # Copy relevant modules into your .cursorrules file
 cat skill/smart-contracts.md >> .cursorrules
 ```
 
 **Option B: Reference in prompts**
+
 ```
 @skill/smart-contracts.md How do I create a singleton table?
 ```
@@ -73,6 +83,7 @@ Copy relevant module content into your prompt context or project documentation. 
 ### Direct Reference
 
 For any AI tool, you can paste sections directly:
+
 ```
 "I'm building on XPR Network. Here's the relevant documentation: [paste from skill/smart-contracts.md]"
 ```
@@ -80,51 +91,57 @@ For any AI tool, you can paste sections directly:
 ## Skill Modules
 
 ### Core Development
-| Module | Description |
-|--------|-------------|
-| [SKILL.md](skill/SKILL.md) | Main entry point with overview and quick reference |
-| [smart-contracts.md](skill/smart-contracts.md) | Contract development with @proton/ts-contracts |
-| [cli-reference.md](skill/cli-reference.md) | Complete @proton/cli command reference |
-| [web-sdk.md](skill/web-sdk.md) | Frontend integration with @proton/web-sdk |
-| [backend-patterns.md](skill/backend-patterns.md) | Server-side signing, automated operations, bots |
-| [rpc-queries.md](skill/rpc-queries.md) | Table reading, Hyperion API, Light API |
-| [testing-debugging.md](skill/testing-debugging.md) | Unit testing, testnet workflows, debugging |
-| [accounts-permissions.md](skill/accounts-permissions.md) | Account creation, permissions, multisig |
-| [staking-governance.md](skill/staking-governance.md) | XPR staking, Block Producers, DPoS, resource model |
+
+| Module                                                   | Description                                        |
+| -------------------------------------------------------- | -------------------------------------------------- |
+| [SKILL.md](skill/SKILL.md)                               | Main entry point with overview and quick reference |
+| [smart-contracts.md](skill/smart-contracts.md)           | Contract development with @proton/ts-contracts     |
+| [cli-reference.md](skill/cli-reference.md)               | Complete @proton/cli command reference             |
+| [web-sdk.md](skill/web-sdk.md)                           | Frontend integration with @proton/web-sdk          |
+| [backend-patterns.md](skill/backend-patterns.md)         | Server-side signing, automated operations, bots    |
+| [rpc-queries.md](skill/rpc-queries.md)                   | Table reading, Hyperion API, Light API             |
+| [testing-debugging.md](skill/testing-debugging.md)       | Unit testing, testnet workflows, debugging         |
+| [accounts-permissions.md](skill/accounts-permissions.md) | Account creation, permissions, multisig            |
+| [staking-governance.md](skill/staking-governance.md)     | XPR staking, Block Producers, DPoS, resource model |
 
 ### Tokens & Identity
-| Module | Description |
-|--------|-------------|
-| [token-creation.md](skill/token-creation.md) | Creating fungible tokens, issuance, vesting |
-| [webauth-identity.md](skill/webauth-identity.md) | WebAuth wallets, KYC, profiles, trust ratings |
-| [nfts-atomicassets.md](skill/nfts-atomicassets.md) | NFT development with AtomicAssets standard |
+
+| Module                                             | Description                                   |
+| -------------------------------------------------- | --------------------------------------------- |
+| [token-creation.md](skill/token-creation.md)       | Creating fungible tokens, issuance, vesting   |
+| [webauth-identity.md](skill/webauth-identity.md)   | WebAuth wallets, KYC, profiles, trust ratings |
+| [nfts-atomicassets.md](skill/nfts-atomicassets.md) | NFT development with AtomicAssets standard    |
 
 ### DeFi & Trading
-| Module | Description |
-|--------|-------------|
-| [metalx-dex.md](skill/metalx-dex.md) | Complete MetalX DEX API reference |
-| [defi-trading.md](skill/defi-trading.md) | Trading bots, perps architecture, DeFi patterns |
-| [loan-protocol.md](skill/loan-protocol.md) | LOAN lending protocol integration |
-| [oracles-randomness.md](skill/oracles-randomness.md) | Price oracles, verifiable random numbers |
+
+| Module                                               | Description                                     |
+| ---------------------------------------------------- | ----------------------------------------------- |
+| [metalx-dex.md](skill/metalx-dex.md)                 | Complete MetalX DEX API reference               |
+| [defi-trading.md](skill/defi-trading.md)             | Trading bots, perps architecture, DeFi patterns |
+| [loan-protocol.md](skill/loan-protocol.md)           | LOAN lending protocol integration               |
+| [oracles-randomness.md](skill/oracles-randomness.md) | Price oracles, verifiable random numbers        |
 
 ### Integration Patterns
-| Module | Description |
-|--------|-------------|
+
+| Module                                           | Description                                   |
+| ------------------------------------------------ | --------------------------------------------- |
 | [real-time-events.md](skill/real-time-events.md) | Hyperion streaming, WebSockets, notifications |
-| [payment-patterns.md](skill/payment-patterns.md) | Payment links, invoicing, POS, subscriptions |
+| [payment-patterns.md](skill/payment-patterns.md) | Payment links, invoicing, POS, subscriptions  |
 
 ### Infrastructure
-| Module | Description |
-|--------|-------------|
+
+| Module                                       | Description                                        |
+| -------------------------------------------- | -------------------------------------------------- |
 | [node-operation.md](skill/node-operation.md) | API nodes, Block Producers, validators, Leap setup |
 
 ### Safety & Reference
-| Module | Description |
-|--------|-------------|
+
+| Module                                             | Description                                           |
+| -------------------------------------------------- | ----------------------------------------------------- |
 | [safety-guidelines.md](skill/safety-guidelines.md) | CRITICAL: Table modification rules, deployment safety |
-| [troubleshooting.md](skill/troubleshooting.md) | Common errors, solutions, diagnostics |
-| [examples.md](skill/examples.md) | Real-world patterns from production contracts |
-| [resources.md](skill/resources.md) | Endpoints, links, community resources |
+| [troubleshooting.md](skill/troubleshooting.md)     | Common errors, solutions, diagnostics                 |
+| [examples.md](skill/examples.md)                   | Real-world patterns from production contracts         |
+| [resources.md](skill/resources.md)                 | Endpoints, links, community resources                 |
 
 ## Usage with Claude Code
 
@@ -142,6 +159,7 @@ Claude will load specialized modules on demand based on your queries.
 ## Key Topics Covered
 
 ### Smart Contract Development
+
 - AssemblyScript/TypeScript contracts with `@proton/ts-contracts`
 - Table definitions (`@table`, `@primary`, singletons)
 - Actions, authentication, inline actions
@@ -149,6 +167,7 @@ Claude will load specialized modules on demand based on your queries.
 - Unit testing with `@proton/vert`
 
 ### CLI Operations
+
 - Network management (`chain:set`, `chain:get`)
 - Key management (`key:add`, `key:list`)
 - Contract deployment (`contract:set`)
@@ -156,18 +175,21 @@ Claude will load specialized modules on demand based on your queries.
 - Account creation and permissions
 
 ### Frontend Integration
+
 - `@proton/web-sdk` for wallet connection
 - Session management and transaction signing
 - RPC queries with `@proton/js`
 - WebAuth and KYC verification
 
 ### Backend Development
+
 - Server-side transaction signing
 - Automated bots and scheduled tasks
 - Security best practices for key management
 - Hyperion and Light API integration
 
 ### Token & Identity
+
 - Fungible token creation and management
 - Token vesting and airdrops
 - WebAuth wallet integration
@@ -175,17 +197,20 @@ Claude will load specialized modules on demand based on your queries.
 - Trust rating system
 
 ### NFT Development
+
 - AtomicAssets standard (collections, schemas, templates, assets)
 - Minting, transfers, and marketplace integration
 - IPFS integration for media storage
 
 ### DeFi and Trading
+
 - MetalX DEX integration (order book, trades)
 - Trading bot patterns (grid bot, market maker)
 - Perpetual futures architecture and building blocks
 - LOAN lending protocol (supply, borrow, liquidations)
 
 ### Safety & Troubleshooting
+
 - **CRITICAL**: Never modify existing table structures with data
 - Pre-deployment checklist
 - Recovery procedures
