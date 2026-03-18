@@ -339,7 +339,7 @@ async function buyResourcePlan(
       data: {
         account: session.auth.actor,
         plan_index: planIndex,
-        quantity: quantity
+        plan_quantity: quantity
       }
     }]
   }, { broadcast: true });
@@ -361,7 +361,7 @@ RAM is used to store data on-chain (table rows, NFTs, tokens, etc.). Unlike CPU/
 
 | Item | Cost |
 |------|------|
-| RAM Storage | **0.0022 XPR per byte** |
+| RAM Storage | **Dynamic (Bancor algorithm), ~0.000252 XPR per byte** |
 | Free RAM (WebAuth) | **12,000 unsellable bytes** per account |
 | Maximum Purchase | **6 MB** |
 
