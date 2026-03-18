@@ -1072,7 +1072,7 @@ const rating = await safeQuery(
 ```typescript
 const ENDPOINTS = [
   'https://proton.eosusa.io',
-  'https://proton.greymass.com'
+  'https://proton.protonuk.io'
 ];
 
 async function queryWithFallback(query: (rpc: JsonRpc) => Promise<any>) {

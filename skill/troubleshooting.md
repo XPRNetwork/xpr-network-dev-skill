@@ -182,7 +182,7 @@ const { rows } = await rpc.get_table_rows({
 // Use multiple endpoints with fallback
 const ENDPOINTS = [
   'https://proton.eosusa.io',
-  'https://proton.greymass.com',
+  'https://proton.protonuk.io',
   'https://proton.cryptolions.io'
 ];
 
