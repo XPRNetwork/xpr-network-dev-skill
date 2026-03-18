@@ -730,11 +730,15 @@ const action = {
 };
 ```
 
-**Token holder airdrop** — query holders from SimpleDEX indexer:
+**Token holder airdrop** — query asset owners from AtomicAssets API:
 ```
-GET https://indexer.protonnz.com/api/tokens/{tokenId}/holders
+GET https://xpr.api.atomicassets.io/atomicassets/v1/accounts?collection_name=COLLECTION
 ```
-Returns `{ holders: [{ account, amount, walletAmount, lpAmount }] }`. Filter by minimum balance, then mint to each qualifying holder.
+Returns unique account names that own assets in the collection. To get owners of a specific template:
+```
+GET https://xpr.api.atomicassets.io/atomicassets/v1/assets?template_id=TEMPLATE_ID&limit=100
+```
+Extract unique `owner` fields, then mint to each.
 
 ### IPFS Gateway Selection
 
