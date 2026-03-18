@@ -587,7 +587,6 @@ async function uploadToIPFS(file: File): Promise<string> {
 | Gateway | URL Pattern |
 |---------|-------------|
 | Pinata | `https://gateway.pinata.cloud/ipfs/{hash}` |
-| Cloudflare | `https://cloudflare-ipfs.com/ipfs/{hash}` |
 | IPFS.io | `https://ipfs.io/ipfs/{hash}` |
 
 ---
