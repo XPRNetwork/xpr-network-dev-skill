@@ -81,16 +81,16 @@ The actual NFTs owned by users.
 
 | Network | Endpoint | Provider |
 |---------|----------|----------|
-| Mainnet | `https://proton.api.atomicassets.io` | Pink.gg |
+| Mainnet | `https://xpr.api.atomicassets.io` | Pink.gg |
 | Mainnet | `https://aa-xprnetwork-main.saltant.io` | Saltant |
-| Testnet | `https://test.proton.api.atomicassets.io` | Pink.gg |
+| Testnet | `https://test.xpr.api.atomicassets.io` | Pink.gg |
 | Testnet | `https://aa-xprnetwork-test.saltant.io` | Saltant |
 
 ### AtomicMarket API (Marketplace)
 
 | Network | Endpoint |
 |---------|----------|
-| Mainnet | `https://proton.api.atomicassets.io` |
+| Mainnet | `https://xpr.api.atomicassets.io` |
 
 ---
 
@@ -112,7 +112,7 @@ async function getOwnedAssets(owner: string, collection?: string) {
   }
 
   const response = await fetch(
-    `https://proton.api.atomicassets.io/atomicassets/v1/assets?${params}`
+    `https://xpr.api.atomicassets.io/atomicassets/v1/assets?${params}`
   );
   const { data } = await response.json();
   return data;
@@ -124,7 +124,7 @@ async function getOwnedAssets(owner: string, collection?: string) {
 ```typescript
 async function getCollection(collectionName: string) {
   const response = await fetch(
-    `https://proton.api.atomicassets.io/atomicassets/v1/collections/${collectionName}`
+    `https://xpr.api.atomicassets.io/atomicassets/v1/collections/${collectionName}`
   );
   const { data } = await response.json();
   return data;
@@ -136,7 +136,7 @@ async function getCollection(collectionName: string) {
 ```typescript
 async function getTemplates(collectionName: string) {
   const response = await fetch(
-    `https://proton.api.atomicassets.io/atomicassets/v1/templates?collection_name=${collectionName}&limit=100`
+    `https://xpr.api.atomicassets.io/atomicassets/v1/templates?collection_name=${collectionName}&limit=100`
   );
   const { data } = await response.json();
   return data;
@@ -148,7 +148,7 @@ async function getTemplates(collectionName: string) {
 ```typescript
 async function getSchemas(collectionName: string) {
   const response = await fetch(
-    `https://proton.api.atomicassets.io/atomicassets/v1/schemas?collection_name=${collectionName}`
+    `https://xpr.api.atomicassets.io/atomicassets/v1/schemas?collection_name=${collectionName}`
   );
   const { data } = await response.json();
   return data;
@@ -160,7 +160,7 @@ async function getSchemas(collectionName: string) {
 ```typescript
 async function getAsset(assetId: string) {
   const response = await fetch(
-    `https://proton.api.atomicassets.io/atomicassets/v1/assets/${assetId}`
+    `https://xpr.api.atomicassets.io/atomicassets/v1/assets/${assetId}`
   );
   const { data } = await response.json();
   return data;
@@ -187,7 +187,7 @@ async function getSales(collection?: string) {
   }
 
   const response = await fetch(
-    `https://proton.api.atomicassets.io/atomicmarket/v1/sales?${params}`
+    `https://xpr.api.atomicassets.io/atomicmarket/v1/sales?${params}`
   );
   const { data } = await response.json();
   return data;
@@ -199,7 +199,7 @@ async function getSales(collection?: string) {
 ```typescript
 async function getTemplateFloorPrice(templateId: string) {
   const response = await fetch(
-    `https://proton.api.atomicassets.io/atomicmarket/v1/sales?` +
+    `https://xpr.api.atomicassets.io/atomicmarket/v1/sales?` +
     `template_id=${templateId}&state=1&limit=1&order=asc&sort=price`
   );
   const { data } = await response.json();
@@ -212,7 +212,7 @@ async function getTemplateFloorPrice(templateId: string) {
 ```typescript
 async function getSalesHistory(assetId: string) {
   const response = await fetch(
-    `https://proton.api.atomicassets.io/atomicmarket/v1/sales?` +
+    `https://xpr.api.atomicassets.io/atomicmarket/v1/sales?` +
     `asset_id=${assetId}&state=3&limit=10`  // state 3 = sold
   );
   const { data } = await response.json();
@@ -497,7 +497,7 @@ const data = [
 ```typescript
 async function userOwnsAsset(owner: string, assetId: string): Promise<boolean> {
   const response = await fetch(
-    `https://proton.api.atomicassets.io/atomicassets/v1/assets/${assetId}`
+    `https://xpr.api.atomicassets.io/atomicassets/v1/assets/${assetId}`
   );
   const { data } = await response.json();
   return data?.owner === owner;
@@ -509,7 +509,7 @@ async function userOwnsAsset(owner: string, assetId: string): Promise<boolean> {
 ```typescript
 async function getAssetsWithMetadata(owner: string) {
   const response = await fetch(
-    `https://proton.api.atomicassets.io/atomicassets/v1/assets?owner=${owner}&limit=100`
+    `https://xpr.api.atomicassets.io/atomicassets/v1/assets?owner=${owner}&limit=100`
   );
   const { data } = await response.json();
 
@@ -617,7 +617,7 @@ RAM is paid by the minter/creator, not the recipient.
 
 - **AtomicAssets Docs**: https://github.com/pinknetworkx/atomicassets-contract
 - **AtomicMarket Docs**: https://github.com/pinknetworkx/atomicmarket-contract
-- **API Documentation**: https://proton.api.atomicassets.io/docs
+- **API Documentation**: https://xpr.api.atomicassets.io/docs
 - **XPR Market Reference**: https://github.com/XPRNetwork/xpr-market
 
 ## Practical Learnings (Real-World Gotchas)
