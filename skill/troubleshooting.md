@@ -459,7 +459,7 @@ proton action eosio updateauth '{
 **Solutions**:
 ```bash
 # Check collection exists
-curl "https://proton.api.atomicassets.io/atomicassets/v1/collections/COLLECTION_NAME"
+curl "https://xpr.api.atomicassets.io/atomicassets/v1/collections/COLLECTION_NAME"
 ```
 
 ### "Not authorized to mint"
