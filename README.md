@@ -22,6 +22,19 @@ cd xpr-network-dev-skill
 ./install.sh
 ```
 
+## Updating
+
+If you installed via git clone, pull the latest version:
+
+```bash
+cd xpr-network-dev-skill
+git pull
+```
+
+Your agent will use the updated skill automatically on the next conversation. No reinstall needed — the settings point to the local directory.
+
+> **v2.0.0 (March 2026):** Major accuracy audit — 40+ fixes across 13 files. All contract actions, params, and tables verified against live mainnet ABIs. Critical fixes for DEX deposits, LOAN protocol, oracle indices, and more. See [PR #10](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/10) for details.
+
 ### Method 1: Add to Claude Code settings
 
 Add this skill to your Claude Code settings file (`~/.claude/settings.json`):
