@@ -35,37 +35,30 @@ Your agent will use the updated skill automatically on the next conversation. No
 
 > **v2.0.0 (March 2026):** Major accuracy audit — 40+ fixes across 13 files. All contract actions, params, and tables verified against live mainnet ABIs. Critical fixes for DEX deposits, LOAN protocol, oracle indices, and more. See [PR #10](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/10) for details.
 
-### Method 1: Add to Claude Code settings
+### Method 1: Manual symlink (personal skill)
 
-Add this skill to your Claude Code settings file (`~/.claude/settings.json`):
-
-```json
-{
-  "skills": [
-    {
-      "name": "xpr-network-dev",
-      "path": "/path/to/xpr-network-dev-skill/skill"
-    }
-  ]
-}
-```
-
-### Method 2: Clone and reference
+Personal skills are available across all your projects:
 
 ```bash
 git clone https://github.com/XPRNetwork/xpr-network-dev-skill.git
-cd xpr-network-dev-skill
+mkdir -p ~/.claude/skills
+ln -s /path/to/xpr-network-dev-skill/skill ~/.claude/skills/xpr-network-dev
 ```
 
-Then add to your project's `CLAUDE.md`:
+### Method 2: Project-level skill
 
-```markdown
-For XPR Network development guidance, see: /path/to/xpr-network-dev-skill/skill/SKILL.md
+To make the skill available only in a specific project:
+
+```bash
+mkdir -p .claude/skills
+ln -s /path/to/xpr-network-dev-skill/skill .claude/skills/xpr-network-dev
 ```
+
+Commit `.claude/skills/xpr-network-dev` to version control so teammates get the skill automatically.
 
 ### Method 3: Copy to project CLAUDE.md
 
-Copy relevant sections from `skill/SKILL.md` directly into your project's `CLAUDE.md` file.
+Copy relevant sections from `skill/SKILL.md` directly into your project's `CLAUDE.md` file. This is the simplest approach but the content always loads into context rather than on-demand.
 
 ## Usage with Other AI Tools
 
