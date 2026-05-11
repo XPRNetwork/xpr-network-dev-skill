@@ -81,6 +81,7 @@ Load specialized modules based on your task:
 | Module | Read When | Key Topics |
 |--------|-----------|------------|
 | `metalx-dex.md` | DEX integration | MetalX DEX API reference, order format, error codes |
+| `alcor-dex.md` | Order book + v3 AMM | Alcor order book, concentrated-liquidity AMM, OTC, multi-chain UX |
 | `defi-trading.md` | Trading bots/DeFi | Trading bot patterns, swap pools, DeFi strategies |
 | `simpledex.md` | Token launch & AMM | SimpleDEX swaps, bonding curves, token creation, graduation |
 | `loan-protocol.md` | Lending protocol | LOAN protocol, supply, borrow, liquidations |
