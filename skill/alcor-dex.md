@@ -4,6 +4,8 @@ Alcor is a multi-chain (WAX, EOS, Telos, XPR Network) DEX that ships **both** an
 
 > **What's NOT on XPR Network:** Alcor's UI advertises NFT marketplace (`alcornftswap`), liquid staking (`liquid.alcor`), and the LSW token (`lsw.alcor`). These accounts **do not exist on XPR Network** — they only run on Alcor's WAX/EOS instances. Do not build against them here.
 
+> **Policy for AI agents:** All chain **writes** in this doc use `proton` CLI — private keys stay in the OS keyring, never in the agent's context. **Reads** use direct RPC (`get_table_rows`) and the Alcor REST API. Do not introduce signing patterns that pass raw keys to the agent (e.g. `new JsSignatureProvider(['PRIV_KEY'])`, `wallet.import_key('...')`).
+
 ## Quick Reference
 
 | Item | Value |
@@ -45,7 +47,7 @@ Base: `https://proton.alcor.exchange/api/v2`. Timestamps in milliseconds. Real-t
 | `GET /tickers/{ticker_id}/orderbook` | Depth |
 | `GET /tickers/{ticker_id}/latest_trades` | Recent fills |
 | `GET /tickers/{ticker_id}/historical_trades` | Trade history |
-| `GET /tickers/{ticker_id}/charts` | OHLCV candles |
+| `GET /tickers/{ticker_id}/charts` | OHLCV candles — **requires** `resolution`, `from`, `to` (Unix seconds); returns `[]` if range/resolution has no data |
 
 ### AMM (swap.alcor)
 
@@ -55,7 +57,14 @@ Base: `https://proton.alcor.exchange/api/v2`. Timestamps in milliseconds. Real-t
 | `GET /swap/pools/{pool_id}` | Single pool with current tick, sqrtPrice, liquidity |
 | `GET /swap/pools/{pool_id}/swaps` | Swap history |
 | `GET /swap/pools/{pool_id}/positions` | LP positions |
-| `GET /swapRouter/getRoute` | Quote: optimal route + expected output |
+| `GET /swapRouter/getRoute` | Quote: optimal route + **memo string ready to use** (see below) |
+
+#### `swapRouter/getRoute` parameters
+
+Required: `trade_type` (`EXACT_INPUT` or `EXACT_OUTPUT`), `input`, `output` (each as `symbol-contract`), `amount`.
+Optional: `slippage` (default `0.3`), `receiver` (defaults to placeholder `<receiver>`), `maxHops` (capped at 3), `includePoolDetails`, `v2`.
+
+The response includes a `memo` field already formatted for the swap transfer — substitute `<receiver>` if you didn't pass it.
 
 ### Account History
 
@@ -104,6 +113,8 @@ Scope for `buyorder` / `sellorder` is the **market id as a string**.
 
 ### `swap.alcor` (AMM — Uniswap v3-style)
 
+Verified against the live ABI on `proton.greymass.com` (2026-05).
+
 | Table | Scope | Description |
 |-------|-------|-------------|
 | `pools` | `swap.alcor` | `id`, `active`, `tokenA {quantity, contract}`, `tokenB`, `fee`, `tickSpacing`, `currSlot {sqrtPriceX64, tick}`, `feeGrowthGlobalAX64`, `feeGrowthGlobalBX64`, `liquidity` |
@@ -112,10 +123,15 @@ Scope for `buyorder` / `sellorder` is the **market id as a string**.
 | `bitmaps` | `<pool_id>` | Tick bitmaps |
 | `observations` | `<pool_id>` | TWAP oracle |
 | `incentives` | `swap.alcor` | Farm incentives |
+| `incentivefee` | `swap.alcor` | Incentive fee config |
 | `stakes` | `swap.alcor` | Staked positions |
 | `stakingpos` | `swap.alcor` | Staking position records |
+| `stakereturn` | `swap.alcor` | Staking return tracking |
 | `balances` | `swap.alcor` | User balances |
+| `banlist` | `swap.alcor` | Banned accounts |
+| `forzenpools` | `swap.alcor` | Frozen pool list (**note: table name is misspelled in the deployed contract — use `forzenpools`, not `frozenpools`**) |
 | `markets` | `swap.alcor` | Per-token market metadata |
+| `system` | `swap.alcor` | System / global config |
 | `whitelist` | `swap.alcor` | Allowed tokens |
 
 ```bash
@@ -141,22 +157,38 @@ Most operational actions live in the ABI, but **placing a limit order is done vi
 
 ### Place a limit order (transfer + memo)
 
-Send the token you're offering to `alcor` with a memo describing what you want back:
+Single rule that covers both directions:
 
-```
-memo = "<ask_amount> <BASE_SYMBOL>@<base_contract>"
-```
+- **Transfer** the token you want to *offer*.
+- **Memo** describes the token + amount you want to *receive*, in the form `<amount> <SYM>@<contract>`.
+
+The implied unit price is `quantity_transferred : amount_in_memo`. The order goes to the buy or sell side depending on which token of the pair you transferred.
 
 ```bash
-# Buy: offer 7977.4902 XPR for 7109.9992 TDBN
+# BUY TDBN with XPR — transfer XPR, ask for TDBN in memo
 proton action eosio.token transfer \
   '{"from":"trader","to":"alcor","quantity":"7977.4902 XPR","memo":"7109.9992 TDBN@tokencreate"}' \
   trader
+
+# SELL TDBN for XPR — transfer TDBN, ask for XPR in memo
+proton action tokencreate transfer \
+  '{"from":"trader","to":"alcor","quantity":"7109.9992 TDBN","memo":"7977.4902 XPR@eosio.token"}' \
+  trader
 ```
 
-For a **sell**, invert: transfer the base token and put the desired quote `amount SYM@contract` in the memo.
+> **Source:** Verified against `store/market.js` `fetchBuy` / `fetchSell` in [alcor-ui](https://github.com/alcorexchange/alcor-ui/blob/master/store/market.js). Both actions construct the memo as `<desired_amount> <desired_symbol>@<desired_contract>`.
 
-> **Caveat:** the memo encoding above is observed from live on-chain activity, not from official Alcor documentation. Cross-check against `alcor-ui` source (`src/utils/orders.js` / `marketStore`) before building production integrations.
+### Cancel an order
+
+```bash
+proton action alcor cancelbuy \
+  '{"executor":"trader","market_id":2,"order_id":123}' trader
+
+proton action alcor cancelsell \
+  '{"executor":"trader","market_id":2,"order_id":123}' trader
+```
+
+Look up your `order_id` via `get_table_rows` on `buyorder` / `sellorder` with scope = market id (string).
 
 ### Direct actions (verified from ABI)
 
@@ -179,27 +211,59 @@ Other admin / receipt / notification actions in the ABI: `buyreceipt`, `sellrece
 
 The AMM follows Uniswap v3 semantics: pools have a fee tier, a current `sqrtPriceX64`, a tick spacing, and positions are bounded by `[tickLower, tickUpper]`.
 
-### Swap (transfer + memo)
+### Swap (recommended: getRoute → transfer)
 
-```
-memo = "swapexactin#<pool_id_or_route>#<recipient>#<min_output asset@contract>#<deadline>"
-```
+The `swapRouter/getRoute` endpoint computes the optimal multi-hop route **and returns the memo string ready to use** — just substitute the receiver. This is the path the official `alcor-ui` and the `@alcorexchange/alcor-swap-sdk` use.
 
 ```bash
-# Single-hop: swap XXRP -> XPR via pool 248, min 1.9823 XPR out, no deadline (0)
-proton action xtokens transfer \
-  '{"from":"trader","to":"swap.alcor","quantity":"0.003810 XXRP","memo":"swapexactin#248#trader#1.9823 XPR@eosio.token#0"}' \
-  trader
+curl "https://proton.alcor.exchange/api/v2/swapRouter/getRoute\
+?trade_type=EXACT_INPUT\
+&input=xpr-eosio.token\
+&output=xusdc-xtokens\
+&amount=10\
+&slippage=0.3\
+&receiver=trader"
+```
 
-# Multi-hop: comma-separated pool ids define the route
-proton action xtokens transfer \
-  '{"from":"trader","to":"swap.alcor","quantity":"0.003810 XXRP","memo":"swapexactin#3993,2845,248#trader#1.9823 XPR@eosio.token#0"}' \
+Response (verified live):
+
+```json
+{
+  "route": [394, 9476, 9023],
+  "memo": "swapexactin#394,9476,9023#trader#0.027783 XUSDC@xtokens#0",
+  "input": "10.0000",
+  "output": "0.027867",
+  "minReceived": "0.027783",
+  "maxSent": "10.0000",
+  "priceImpact": "0.72",
+  "executionPrice": { "numerator": "27867", "denominator": "100000" }
+}
+```
+
+Then transfer with the returned memo:
+
+```bash
+proton action eosio.token transfer \
+  '{"from":"trader","to":"swap.alcor","quantity":"10.0000 XPR","memo":"swapexactin#394,9476,9023#trader#0.027783 XUSDC@xtokens#0"}' \
   trader
 ```
 
-Use `GET /api/v2/swapRouter/getRoute` to compute the optimal route and `min_output` before signing.
+#### Memo format reference
 
-> **Caveat:** memo format reverse-engineered from live swaps. Confirm against `alcor-ui` (`src/store/modules/swap.js`) or `@alcorexchange/alcor-swap-sdk` for production use.
+For callers that compute the route themselves (e.g. with the swap SDK):
+
+```
+swapexactin#<pool_id_or_route_csv>#<recipient>#<min_output asset@contract>#<deadline>
+```
+
+| Segment | Meaning |
+|---------|---------|
+| `<pool_id_or_route_csv>` | Single pool id, or comma-separated list for multi-hop (`3993,2845,248`) |
+| `<recipient>` | Account that receives the output |
+| `<min_output asset@contract>` | Minimum acceptable output amount as an extended asset, e.g. `0.027783 XUSDC@xtokens` |
+| `<deadline>` | Unix seconds, or `0` for no deadline |
+
+> **Source:** Format authoritatively defined in [`examples/getTrateRoute.ts`](https://github.com/alcorexchange/alcor-v2-sdk/blob/main/examples/getTrateRoute.ts) of the official Swap SDK: `` `swapexactin#${route.join(',')}#${receiver}#${minReceived.toExtendedAsset()}#0` ``. The live `getRoute` API returns this same string ready for transfer.
 
 ### Direct actions (verified from ABI)
 
