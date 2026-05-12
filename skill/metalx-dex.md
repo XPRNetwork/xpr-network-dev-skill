@@ -18,6 +18,7 @@ MetalX is the primary decentralized exchange on XPR Network - a peer-to-peer mar
 | Environment | API Base URL | RPC URL |
 |-------------|--------------|---------|
 | **Mainnet** | `https://dex.api.mainnet.metalx.com` | `https://rpc.api.mainnet.metalx.com` |
+| **Testnet** | `https://dex.api.testnet.metalx.com` | `https://rpc.api.testnet.metalx.com` |
 
 ### RPC Fallback Endpoints
 
@@ -40,7 +41,6 @@ If the primary RPC is unavailable, use these alternatives for chain queries:
 > # ❌ WRONG — tokens will be lost forever
 > proton action eosio.token transfer '{"from":"myaccount","to":"dex","quantity":"1000.0000 XPR","memo":"deposit"}' myaccount
 > ```
-| **Testnet** | `https://dex.api.testnet.metalx.com` | `https://rpc.api.testnet.metalx.com` |
 
 ---
 
