@@ -855,6 +855,8 @@ placeOrder(...): void {
 
 `proton.swaps` provides automated market maker (AMM) swap pools — an alternative to the DEX order book for instant trades.
 
+> **This is what the MetalX "Swap" tab runs on.** MetalX does not deploy a separate swap contract on XPR Network; its swap UI is a front-end on top of `proton.swaps`. So the pools, liquidity, and on-chain math documented here are the same ones a MetalX user is interacting with — they're not two separate venues.
+
 ### Key Contract
 
 | Contract | Purpose |
