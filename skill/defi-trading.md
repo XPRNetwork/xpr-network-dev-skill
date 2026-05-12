@@ -46,38 +46,55 @@ async function getMarkets() {
 
 ### Get Order Book
 
+The `/orders/depth` endpoint takes `symbol` (e.g. `XPR_XUSDC`) and `step` (price aggregation level), **not** `market_id`. Verified live against the API; passing `market_id` returns HTTP 400 `{"message":["symbol: Required","step: Expected number, received nan"]}`.
+
 ```typescript
-async function getOrderBook(marketId: string) {
+async function getOrderBook(symbol: string, step: number = 0.0001) {
   const response = await fetch(
-    `https://dex.api.mainnet.metalx.com/dex/v1/orders/depth?market_id=${marketId}`
+    `https://dex.api.mainnet.metalx.com/dex/v1/orders/depth?symbol=${symbol}&step=${step}`
   );
   const { data } = await response.json();
-  return data;  // { bids: [...], asks: [...] }
+  return data;  // { bids: [{level, count, bid, ask}, ...], asks: [...] }
 }
+
+// Usage
+const book = await getOrderBook('XPR_XUSDC');
 ```
 
 ### Get Latest Price
 
+`/trades/daily` returns the **24h OHLCV for every market**, not a single market. Filter client-side by `market_id` or `symbol`.
+
 ```typescript
-async function getLatestPrice(marketId: string) {
+async function getDailyStats(symbol?: string) {
   const response = await fetch(
-    `https://dex.api.mainnet.metalx.com/dex/v1/trades/daily?market_id=${marketId}`
+    `https://dex.api.mainnet.metalx.com/dex/v1/trades/daily`
   );
   const { data } = await response.json();
-  return data;  // { last_price, high_24h, low_24h, volume_24h, ... }
+  // data is Array<{ market_id, symbol, volume_bid, volume_ask, open, close, high, low, change_percentage }>
+  return symbol ? data.find((m: any) => m.symbol === symbol) : data;
 }
+
+// Usage
+const xprUsdc = await getDailyStats('XPR_XUSDC');
+console.log(xprUsdc.close, xprUsdc.high, xprUsdc.low, xprUsdc.volume_bid);
 ```
 
 ### Get Trade History
 
+`/trades/recent` takes `symbol`, not `market_id`. Passing `market_id` returns HTTP 400.
+
 ```typescript
-async function getTradeHistory(marketId: string, limit: number = 50) {
+async function getTradeHistory(symbol: string, limit: number = 50) {
   const response = await fetch(
-    `https://dex.api.mainnet.metalx.com/dex/v1/trades/recent?market_id=${marketId}&limit=${limit}`
+    `https://dex.api.mainnet.metalx.com/dex/v1/trades/recent?symbol=${symbol}&limit=${limit}`
   );
   const { data } = await response.json();
   return data;
 }
+
+// Usage
+const trades = await getTradeHistory('XPR_XUSDC', 20);
 ```
 
 ### Get User's Open Orders
@@ -887,43 +904,22 @@ Pool row structure:
 
 ### Exchange Fees
 
-A swap pays **two** fees, not one:
+**Product spec (canonical):** [docs.metalx.com → Swap fees and discounts](https://docs.metalx.com/swap-pools-and-farms/what-is-metal-x-swap/swap-fees-and-discounts) — the per-trade fee on MetalX Swap is **0.3%**, split as **0.2% to LPs** + **0.1% to XPR burns or XPR Grants** (quarterly disposition).
 
-1. **Per-pool LP fee** (`pools[i].fee.exchange_fee`, in bps) — goes to LPs of that pool.
-2. **Global protocol fee** (`globall.exchange_fee_for_protocol`, in bps) — currently **`10` (0.10%)** — taken off the input and sent to the `protocolfee1` account.
+**On-chain mechanism** (for programmatic integrators talking to `proton.swaps` without going through the MetalX UI):
 
-The on-chain numbers (verified against `proton.swaps`'s ABI + `globall` singleton):
+- LP slice = `pools[i].fee.exchange_fee` — 20 bps on pools exposed in the MetalX UI.
+- Burns/Grants slice = `globall.exchange_fee_for_protocol` — 10 bps, flat. Sent on-chain to the `fee.swaps` account (verified via `get_account` and outbound transfer history); governance-mutable via the contract's `globalfee` action. From there, MetalX disposes of accumulated XPR by burning or routing to XPR Grants quarterly (per [docs.metalx.com](https://docs.metalx.com/swap-pools-and-farms/what-is-metal-x-swap/swap-fees-and-discounts)).
 
-```
-LP fee:       pool.fee.exchange_fee bps  (20 for most pools, 5 for the stablecoin pool)
-Protocol fee: globall.exchange_fee_for_protocol = 10 bps  (applies to every pool)
-```
+The two slices compound (protocol fee comes off the input first, then the AMM math applies the LP fee) — the difference vs adding is negligible at these magnitudes.
 
-This means the **total user-paid swap fee** is roughly:
+Other pools may exist in the `pools` table with different `fee.exchange_fee` values, but only the MetalX-exposed set is documented and product-supported. For anything not in the MetalX docs, read `pools[i].fee` and `globall.exchange_fee_for_protocol` live from chain and don't assume a total; that pool may not be routable through the MetalX UI at all.
 
-| Pool type | LP fee | Protocol fee | **Total user fee** |
-|-----------|--------|--------------|--------------------|
-| Standard pools (27 of 28 live pools) | 0.20% | 0.10% | **~0.30%** |
-| Stablecoin pool (XUSDT/XUSDC only)   | 0.05% | 0.10% | **~0.15%** |
+### Active Pools
 
-The protocol fee is deducted first, then the AMM math uses the LP fee, so the two fees compound rather than add exactly — but the difference is negligible at these magnitudes (the standard pool is 0.300% to three decimals).
+The `pools` table lists every pool the contract knows about. **Pool set rotates** — query `get_table_rows code=proton.swaps scope=proton.swaps table=pools` for the current set rather than hard-coding a list.
 
-**Don't hard-code `0.20%` or `0.05%` as the swap fee** — that's only the LP slice. Read both `pools[i].fee.exchange_fee` and `globall.exchange_fee_for_protocol` if you need the live total. Re-read at start-up; the protocol fee is governance-mutable via the contract's `globalfee` action.
-
-### Active Pools (sampled May 2026)
-
-28 pools live on chain. **Pool IDs and the pool set rotate** — list returned below is a snapshot; query `get_table_rows code=proton.swaps scope=proton.swaps table=pools` for the current set rather than hard-coding.
-
-| Pool (`lt_symbol`) | LP fee | Total user fee | Notes |
-|--------------------|--------|----------------|-------|
-| `XPRBNB` | 0.20% | ~0.30% | |
-| `XPRBTC` | 0.20% | ~0.30% | |
-| `XPRETH` | 0.20% | ~0.30% | |
-| `XPRXMT` | 0.20% | ~0.30% | |
-| `BNBUSD` (XBNB/XUSDC) | 0.20% | ~0.30% | |
-| `METAXMD` (METAL/XMD) | 0.20% | ~0.30% | |
-| `USDTUSD` (XUSDT/XUSDC) | 0.05% | ~0.15% | Stablecoin pool — lower LP fee |
-| _(+21 more)_ | 0.20% | ~0.30% | Query `pools` table for the full list |
+For the canonical list of swap routes a MetalX user can actually take, see [docs.metalx.com](https://docs.metalx.com/) → *Swap pools and farms*.
 
 ### Execute a Swap
 
@@ -956,17 +952,17 @@ For a constant-product AMM (x × y = k):
 output = (input_amount × (10000 - exchange_fee) × output_reserve) / (input_reserve × 10000 + input_amount × (10000 - exchange_fee))
 ```
 
-The pure AMM formula applies the **LP fee** to the input. To match on-chain output, deduct the **protocol fee first**, then run the formula with the LP fee — the contract does these in that order.
+The pure AMM formula applies the **LP fee** to the input. To match on-chain output, deduct the **burns/grants fee first**, then run the formula with the LP fee — the contract does these in that order. Read both fee values from chain at runtime; the burns/grants slice is governance-mutable.
 
 ```typescript
 function calculateSwapOutput(
   inputAmount: number,
   inputReserve: number,
   outputReserve: number,
-  exchangeFee: number,    // pool LP fee in bps, e.g. 20 for 0.20%
-  protocolFee: number = 10 // globall.exchange_fee_for_protocol, currently 10 bps
+  exchangeFee: number,    // pool LP fee in bps — read pools[i].fee.exchange_fee
+  protocolFee: number     // burns/grants slice — read globall.exchange_fee_for_protocol
 ): number {
-  // 1) Protocol fee comes off the input.
+  // 1) Burns/Grants slice comes off the input first.
   const inputAfterProtocol = inputAmount * (10000 - protocolFee) / 10000;
   // 2) Then the AMM swap math applies the LP fee.
   const inputWithFee = inputAfterProtocol * (10000 - exchangeFee);

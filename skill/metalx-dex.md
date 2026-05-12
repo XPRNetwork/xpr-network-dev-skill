@@ -672,9 +672,9 @@ class MetalXService {
     return res.json();
   }
 
-  // Get orderbook depth
-  async getOrderbook(marketId: number) {
-    const res = await fetch(`${this.baseUrl}/dex/v1/orders/depth?market_id=${marketId}`);
+  // Get orderbook depth — takes symbol + step, NOT market_id
+  async getOrderbook(symbol: string, step: number = 0.0001) {
+    const res = await fetch(`${this.baseUrl}/dex/v1/orders/depth?symbol=${symbol}&step=${step}`);
     return res.json();
   }
 
@@ -690,9 +690,9 @@ class MetalXService {
     return res.json();
   }
 
-  // Get recent trades
-  async getRecentTrades(marketId: number) {
-    const res = await fetch(`${this.baseUrl}/dex/v1/trades/recent?market_id=${marketId}`);
+  // Get recent trades — takes symbol, NOT market_id
+  async getRecentTrades(symbol: string) {
+    const res = await fetch(`${this.baseUrl}/dex/v1/trades/recent?symbol=${symbol}`);
     return res.json();
   }
 
@@ -766,9 +766,14 @@ Holders of limited edition NFT DEX Keys receive **100% fee discount**.
 
 ### Swap Fees
 
-**Base fee: 0.3%** distributed as:
-- **0.2%** → Liquidity providers
-- **0.1%** → XPR burns / XPR Grants
+Canonical source: [docs.metalx.com → Swap fees and discounts](https://docs.metalx.com/swap-pools-and-farms/what-is-metal-x-swap/swap-fees-and-discounts).
+
+**Per-trade fee on MetalX Swap: 0.3%**, split as:
+
+- **0.2% → Liquidity providers** (LPs) of that pool
+- **0.1% → XPR burns or XPR Grants** — converted to XPR and burned, or added to XPR Grants, at the end of each quarter
+
+The MetalX Swap UI sits on top of the on-chain `proton.swaps` contract. For programmatic integrators talking to `proton.swaps` directly (without going through the MetalX UI), see [`defi-trading.md`](./defi-trading.md#proton-swaps-amm-liquidity-pools) for the AMM math, swap snippet, and contract-level details.
 
 #### Swap Fee Discounts (by Staked XPR)
 
@@ -896,13 +901,15 @@ Official open-source trading bot for automated trading on Metal X.
 
 ### Running the Bot
 
+> ⚠️ **Security note.** The upstream `XPRNetwork/dex-bot` configuration uses `PROTON_PRIVATE_KEY` as an environment variable — i.e., the bot's process memory holds the chain key for its entire runtime. This is the pattern that's now discouraged for any server-side XPR signing; see [`backend-patterns.md`](./backend-patterns.md#security-key-isolation) for the rationale and the `createCliSession` (proton CLI keychain) path that keeps keys out of process memory. The commands below reflect the upstream README; if you adapt the bot to your own fork, prefer the keychain pattern.
+
 ```bash
 # Clone repository
 git clone https://github.com/XPRNetwork/dex-bot.git
 cd dex-bot
 npm install
 
-# Set environment variables
+# Upstream configuration — key in process memory (NOT recommended for production)
 export PROTON_USERNAME=your_username
 export PROTON_PRIVATE_KEY=your_private_key
 
@@ -915,7 +922,7 @@ npm run bot
 **Important Notes:**
 - Minimum order: $1 or 1 XMD
 - Bot auto-replaces filled orders
-- Keep private key secure
+- **For production:** migrate to the proton CLI keychain pattern — see [`backend-patterns.md`](./backend-patterns.md#security-key-isolation) and [`agent-bootstrap.md`](../agent-bootstrap.md) Step 2
 - Verify identity at https://identity.metallicus.com if needed
 
 ---
@@ -935,35 +942,6 @@ npm run bot
 | XPR | FREE |
 
 *Bridge deposit fee: 0%*
-
----
-
-## Common Errors
-
-### Place Order Errors
-
-| Error | Cause |
-|-------|-------|
-| Contract is paused | DEX temporarily paused |
-| Market not found | Invalid market_id |
-| Placing orders is disabled for this market | Market status prevents orders |
-| Invalid order type | Must be 1, 2, or 3 |
-| Invalid order side | Must be 1 or 2 |
-| Invalid price | Price must be between 0 and INT_MAX |
-| Minimum order size is ... | Below market minimum |
-| Invalid order type - add trigger price | Stop loss/take profit needs trigger_price > 0 |
-| Invalid referrer name, self referral not allowed | Cannot refer yourself |
-
-### Cancel Order Errors
-
-| Error | Cause |
-|-------|-------|
-| Contract is paused | DEX temporarily paused |
-| Invalid authorization | Not authorized |
-| Invalid order id | Must be > 0 |
-| Order not found | Already executed or doesn't exist |
-| Accounts mismatch | Don't own this order |
-| Market not found | Invalid market reference |
 
 ---
 

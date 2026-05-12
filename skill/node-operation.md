@@ -383,16 +383,22 @@ Key components:
 
 ### Download Snapshot
 
-Instead of syncing from genesis, use a recent snapshot:
+Instead of syncing from genesis (which takes days), use a recent snapshot. **Public snapshot mirrors come and go** — operators run them as a courtesy and URLs change without notice. Don't hard-code a mirror in production tooling; ask in the [XPR Network validators group on Telegram](https://t.me/XPRNetwork/935112) for a currently-live mirror, or generate your own from a known-good node.
+
+The commands below assume a `.bin.zst` snapshot at `$SNAPSHOT_URL`:
 
 ```bash
-# Download snapshot (example from CryptoLions)
-wget https://backup.cryptolions.io/ProtonMainNet/snapshots/latest-snapshot.bin.zst
+# 1) Find a currently-live mirror (ask in the XPR Network validators
+#    group on Telegram: https://t.me/XPRNetwork/935112 — or check your peer list).
+SNAPSHOT_URL="https://<operator-provided-mirror>/latest-snapshot.bin.zst"
 
-# Decompress
+# 2) Download
+wget "$SNAPSHOT_URL" -O latest-snapshot.bin.zst
+
+# 3) Decompress
 zstd -d latest-snapshot.bin.zst
 
-# Start with snapshot
+# 4) Start nodeos from the snapshot
 nodeos --snapshot latest-snapshot.bin
 ```
 

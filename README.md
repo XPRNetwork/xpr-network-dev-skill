@@ -46,8 +46,6 @@ Your assistant will see the new content on its next conversation. No reinstall.
 ./scripts/agent-bootstrap.sh
 ```
 
-Your agent will use the updated skill automatically on the next conversation. No reinstall needed — the symlink points to the local directory.
-
 > **v2.2.0 (May 2026):** Multi-PR accuracy + safety pass on top of v2.0.0:
 >
 > - **Backend signing** — replaced the legacy `JsSignatureProvider` pattern with the proton CLI keychain (`@xpr-agents/openclaw` `createCliSession`). Keys never enter agent process memory. See [PR #15](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/15).
@@ -150,7 +148,7 @@ For any AI tool, you can paste sections directly:
 | Module                                                   | Description                                        |
 | -------------------------------------------------------- | -------------------------------------------------- |
 | [SKILL.md](skill/SKILL.md)                               | Main entry point with overview and quick reference |
-| [smart-contracts.md](skill/smart-contracts.md)           | Contract development with @proton/ts-contracts     |
+| [smart-contracts.md](skill/smart-contracts.md)           | Contract development with `proton-tsc`             |
 | [cli-reference.md](skill/cli-reference.md)               | Complete @proton/cli command reference             |
 | [web-sdk.md](skill/web-sdk.md)                           | Frontend integration with @proton/web-sdk          |
 | [backend-patterns.md](skill/backend-patterns.md)         | Server-side signing, automated operations, bots    |
@@ -217,7 +215,7 @@ Claude will load specialized modules on demand based on your queries.
 
 ### Smart Contract Development
 
-- AssemblyScript/TypeScript contracts with `@proton/ts-contracts`
+- AssemblyScript/TypeScript contracts with `proton-tsc`
 - Table definitions (`@table`, `@primary`, singletons)
 - Actions, authentication, inline actions
 - Build and deploy workflow

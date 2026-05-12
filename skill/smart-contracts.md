@@ -1,6 +1,6 @@
 # Smart Contract Development on XPR Network
 
-This guide covers AssemblyScript/TypeScript smart contract development using `@proton/ts-contracts` (proton-tsc).
+This guide covers AssemblyScript/TypeScript smart contract development using [`proton-tsc`](https://www.npmjs.com/package/proton-tsc) — the npm package that ships the SDK decorators and types. Build is via `proton-asc` (AssemblyScript compiler). Note: `@proton/ts-contracts` is **not** a real npm package; earlier docs cited that name in error.
 
 > **Before deploying to mainnet**: Always review AI-generated code, test thoroughly on testnet, and consider having experienced developers review critical contracts. See `safety-guidelines.md` for essential deployment safety rules.
 

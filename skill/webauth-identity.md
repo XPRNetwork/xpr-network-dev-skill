@@ -166,6 +166,8 @@ async function updateProfile(
 
 ### Avatar Component
 
+Local initials fallback — no third-party CDN, no per-render request leaking account names to an external service. Account name hashes to a deterministic hue so each user gets a consistent color.
+
 ```tsx
 interface AvatarProps {
   account: string;
@@ -173,22 +175,56 @@ interface AvatarProps {
   size?: number;
 }
 
+// Cheap, deterministic string → hue.
+function hueFromAccount(account: string): number {
+  let hash = 0;
+  for (let i = 0; i < account.length; i++) {
+    hash = (hash << 5) - hash + account.charCodeAt(i);
+    hash |= 0; // force int32
+  }
+  return Math.abs(hash) % 360;
+}
+
 export function Avatar({ account, avatar, size = 40 }: AvatarProps) {
-  const [src, setSrc] = useState(avatar);
   const [error, setError] = useState(false);
+  const showImage = avatar && !error;
 
-  // Fallback to generated avatar
-  const fallback = `https://avatars.dicebear.com/api/identicon/${account}.svg`;
+  if (showImage) {
+    return (
+      <img
+        src={avatar}
+        alt={account}
+        width={size}
+        height={size}
+        style={{ borderRadius: '50%', objectFit: 'cover' }}
+        onError={() => setError(true)}
+      />
+    );
+  }
 
+  // Initials fallback — first character of the account, in a deterministic-color circle.
+  const hue = hueFromAccount(account);
   return (
-    <img
-      src={error ? fallback : (src || fallback)}
-      alt={account}
-      width={size}
-      height={size}
-      style={{ borderRadius: '50%' }}
-      onError={() => setError(true)}
-    />
+    <div
+      role="img"
+      aria-label={account}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        background: `hsl(${hue}, 60%, 50%)`,
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: size * 0.45,
+        fontWeight: 600,
+        textTransform: 'uppercase',
+        userSelect: 'none',
+      }}
+    >
+      {account.charAt(0)}
+    </div>
   );
 }
 ```

@@ -31,7 +31,7 @@ XPR Network is an EOS-based blockchain optimized for payments and identity:
 | **Fees** | Zero gas fees for end users |
 | **Accounts** | Human-readable names (1-12 chars, a-z, 1-5) |
 | **Wallets** | WebAuthn support (Face ID, fingerprint, security keys) |
-| **Contracts** | AssemblyScript/TypeScript with @proton/ts-contracts |
+| **Contracts** | AssemblyScript/TypeScript with `proton-tsc` |
 | **Storage** | On-chain tables with RAM-based pricing |
 
 ### Name Change: Proton → XPR Network

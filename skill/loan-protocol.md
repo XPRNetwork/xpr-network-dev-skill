@@ -415,7 +415,16 @@ proton action xtokens transfer '{"from":"myaccount","to":"lending.loan","quantit
 | Contract | `loan.token` |
 | Symbol | LOAN |
 | Precision | 4 |
-| Max Supply | 100,000,000 LOAN |
+| Max Supply | Unbounded (`0.0000 LOAN` on the token contract — i.e. no cap) |
+| Circulating (May 2026) | ~113.3 billion LOAN |
+
+> **Note:** Earlier versions of this doc claimed a 100,000,000 LOAN max supply. That was wrong — `eosio.token::stat` shows `max_supply: 0.0000 LOAN` (unbounded) and `supply` already exceeds 113 billion. Verify the current supply with:
+>
+> ```bash
+> curl -s -X POST https://proton.eosusa.io/v1/chain/get_currency_stats \
+>   -H 'Content-Type: application/json' \
+>   -d '{"code":"loan.token","symbol":"LOAN"}'
+> ```
 
 ### Staking LOAN
 
