@@ -548,73 +548,78 @@ async function getOrderLifecycle(ordinalId) {
 
 ### Python: Submit Order
 
+Python signs and broadcasts via the **proton CLI keychain** through `subprocess` — the private key never enters the Python process. Same key-isolation guarantee as the JS path above; see `backend-patterns.md` "Security: Key Isolation" for the rationale.
+
+One-time setup outside this script: `proton key:add` to load your key into the CLI keychain. The Python script needs no `XPR_PRIVATE_KEY`, no `.env`, no `pyeoskit`.
+
 ```python
 import json
-import requests
-from pyeoskit import eosapi, wallet
+import subprocess
 from math import pow
 
-wallet.import_key('mywallet', 'YOUR_PRIVATE_KEY')
-eosapi.set_node('https://rpc.api.mainnet.metalx.com')
-
 USERNAME = 'youraccount'
-SUBMIT_URL = 'https://dex.api.mainnet.metalx.com/dex/v1/orders/submit'
 
 # Order parameters
 MARKET_ID = 1
-ORDER_SIDE = 2  # Sell
-ORDER_TYPE = 1  # Limit
-FILL_TYPE = 0   # GTC
+ORDER_SIDE = 2   # Sell
+ORDER_TYPE = 1   # Limit
+FILL_TYPE = 0    # GTC
 PRICE = 0.0021
 AMOUNT = 700
 
 BID_TOKEN = {'contract': 'eosio.token', 'symbol': 'XPR', 'precision': 4}
 ASK_TOKEN = {'contract': 'xmd.token', 'symbol': 'XMD', 'precision': 6}
 
-permission = {USERNAME: 'active'}
+auth = [{'actor': USERNAME, 'permission': 'active'}]
 
-args1 = {
-    'from': USERNAME,
-    'to': 'dex',
-    'quantity': f'{AMOUNT:.{BID_TOKEN["precision"]}f} {BID_TOKEN["symbol"]}',
-    'memo': ''
-}
+actions = [
+    {
+        'account': BID_TOKEN['contract'],
+        'name': 'transfer',
+        'authorization': auth,
+        'data': {
+            'from': USERNAME,
+            'to': 'dex',
+            'quantity': f'{AMOUNT:.{BID_TOKEN["precision"]}f} {BID_TOKEN["symbol"]}',
+            'memo': ''   # CRITICAL: must be empty — see "DEX Token Deposits" warning above
+        }
+    },
+    {
+        'account': 'dex',
+        'name': 'placeorder',
+        'authorization': auth,
+        'data': {
+            'market_id': MARKET_ID,
+            'account': USERNAME,
+            'order_type': ORDER_TYPE,
+            'order_side': ORDER_SIDE,
+            'fill_type': FILL_TYPE,
+            'bid_symbol': {'sym': f'{BID_TOKEN["precision"]},{BID_TOKEN["symbol"]}', 'contract': BID_TOKEN['contract']},
+            'ask_symbol': {'sym': f'{ASK_TOKEN["precision"]},{ASK_TOKEN["symbol"]}', 'contract': ASK_TOKEN['contract']},
+            'referrer': '',
+            'quantity': int(AMOUNT * pow(10, BID_TOKEN['precision'])),
+            'price': int(PRICE * pow(10, ASK_TOKEN['precision'])),
+            'trigger_price': 0
+        }
+    },
+    {
+        'account': 'dex',
+        'name': 'process',
+        'authorization': auth,
+        'data': {'q_size': 25, 'show_error_msg': 0}
+    }
+]
 
-args2 = {
-    'market_id': MARKET_ID,
-    'account': USERNAME,
-    'order_type': ORDER_TYPE,
-    'order_side': ORDER_SIDE,
-    'fill_type': FILL_TYPE,
-    'bid_symbol': {'sym': f'{BID_TOKEN["precision"]},{BID_TOKEN["symbol"]}', 'contract': BID_TOKEN['contract']},
-    'ask_symbol': {'sym': f'{ASK_TOKEN["precision"]},{ASK_TOKEN["symbol"]}', 'contract': ASK_TOKEN['contract']},
-    'referrer': '',
-    'quantity': int(AMOUNT * pow(10, BID_TOKEN['precision'])),
-    'price': int(PRICE * pow(10, ASK_TOKEN['precision'])),
-    'trigger_price': 0
-}
-
-args3 = {'q_size': 20, 'show_error_msg': 0}
-
-a1 = [BID_TOKEN['contract'], 'transfer', args1, permission]
-a2 = ['dex', 'placeorder', args2, permission]
-a3 = ['dex', 'process', args3, permission]
-
-# Generate and submit transaction
-info = eosapi.get_info()
-final_tx = eosapi.generate_packed_transaction(
-    [a1, a2, a3], 60,
-    info['last_irreversible_block_id'],
-    info['chain_id']
+# Hand the action array to the proton CLI. The CLI signs from its
+# encrypted keychain and broadcasts as a single atomic transaction.
+result = subprocess.run(
+    ['proton', 'transaction', json.dumps(actions)],
+    check=True, capture_output=True, text=True
 )
-mtx = json.loads(final_tx)
-
-response = requests.post(SUBMIT_URL, json={
-    'serialized_tx_hex': mtx['packed_trx'],
-    'signatures': mtx['signatures']
-})
-print(response.json())
+print(result.stdout)
 ```
+
+> **Note:** this path broadcasts directly to the chain. If you specifically need MetalX's `/orders/submit` endpoint (e.g. to receive an `ordinal_order_id` in the API response), use the JavaScript path above — Python doesn't have a stable equivalent of `createCliSession`'s `{ broadcast: false }` flow that returns a signed-but-unbroadcast transaction. For the vast majority of programmatic order placement, direct broadcast is equivalent.
 
 ### Python: Get Order Lifecycle
 
@@ -682,23 +687,26 @@ class MetalXService {
 
 ## Libraries & Dependencies
 
+Both paths assume the proton CLI is installed system-wide and your account's key has been added to its keychain:
+
+```bash
+npm install -g @proton/cli
+proton key:add   # one-time, prompts for the private key, stores it encrypted in the OS keychain
+```
+
 ### JavaScript
 ```bash
-npm install @proton/js node-fetch
+npm install @xpr-agents/openclaw node-fetch
 ```
+
+`@xpr-agents/openclaw` provides `createCliSession`, which routes signing through `proton transaction:push` so the private key never enters the Node process. See `backend-patterns.md` "Security: Key Isolation".
 
 ### Python
 ```bash
-pip install pyeoskit requests
+pip install requests
 ```
 
-**macOS setup for pyeoskit:**
-```bash
-brew install go cython
-python3 -m pip install cmake
-xcode-select --install
-python3 -m pip install pyeoskit
-```
+That's the entire Python dependency footprint — no `pyeoskit`, no key library, no build toolchain. Signing happens in `proton` via `subprocess`; Python only constructs the action JSON and reads the result.
 
 ---
 
