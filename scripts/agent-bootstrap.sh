@@ -98,9 +98,12 @@ RPC_ENDPOINT="$RPC_ENDPOINT" node -e "
     console.log('  chain_id:', info.chain_id);
     console.log('  head:    ', info.head_block_num);
     try {
+      // listAgents returns { items, hasMore, nextCursor } — verified against
+      // @xpr-agents/sdk@0.2.6. Use .items, NOT the wrapper directly.
       const agents = new AgentRegistry(rpc);
-      const all = await agents.listAgents({ limit: 5 });
-      console.log('  agents:  ', all.map(a => a.name).join(', ') || '(none)');
+      const result = await agents.listAgents({ limit: 5 });
+      const names = result.items.map(a => a.account);
+      console.log('  agents:  ', names.join(', ') || '(none)');
     } catch (e) {
       console.log('  agents:   (listAgents threw — registry may not be deployed on this RPC: ' + e.message + ')');
     }
@@ -119,8 +122,24 @@ KEYCHAIN_STATUS="not provisioned (see manual steps printed above)"
 if ! command -v proton >/dev/null 2>&1; then
   say "Step 2 — Installing @proton/cli"
   npm install -g @proton/cli
-  ok "proton CLI installed ($(proton --version 2>/dev/null || echo 'version unknown'))"
 fi
+
+# After a global install, the npm bin directory may not be on PATH yet —
+# this is the #1 cause of "proton: command not found" in agent consoles.
+# Resolve npm's prefix and prepend its bin to PATH for the rest of this
+# script. Also print the export line so the operator can persist it.
+if ! command -v proton >/dev/null 2>&1; then
+  NPM_BIN="$(npm config get prefix 2>/dev/null)/bin"
+  if [ -x "$NPM_BIN/proton" ]; then
+    export PATH="$NPM_BIN:$PATH"
+    warn "proton was not on PATH after install; prepended $NPM_BIN"
+    warn "add this to the operator's shell profile to persist:"
+    warn "    export PATH=\"$NPM_BIN:\$PATH\""
+  fi
+fi
+
+command -v proton >/dev/null 2>&1 || die "proton CLI not callable even after PATH fixup"
+ok "proton CLI callable ($(proton --version 2>/dev/null | head -1 || echo 'version unknown'))"
 
 # Make sure the chain is set; this is non-interactive and idempotent.
 proton chain:set "${PROTON_CHAIN:-proton}" >/dev/null 2>&1 || true
@@ -130,6 +149,29 @@ if [ -n "${XPR_PRIVATE_KEY:-}" ]; then
   warn "the key will be briefly visible in 'ps' while 'proton key:add' runs"
   warn "this script assumes a trusted single-tenant container (Pinata, dedicated VM)"
   warn "do NOT run this path on a shared host"
+
+  # Pre-flight: catch the most common paste failure (whitespace/newlines
+  # injected by chat interfaces) before handing the key to proton CLI,
+  # whose error message is the unhelpful "invalid base-58 value".
+  KEY_TRIMMED="$(printf '%s' "$XPR_PRIVATE_KEY" | tr -d '[:space:]')"
+  if [ "$KEY_TRIMMED" != "$XPR_PRIVATE_KEY" ]; then
+    warn "XPR_PRIVATE_KEY contained whitespace — stripped for the add call"
+    warn "(chat interfaces often inject leading/trailing whitespace or newlines)"
+    XPR_PRIVATE_KEY="$KEY_TRIMMED"
+  fi
+  case "$XPR_PRIVATE_KEY" in
+    PVT_K1_*)
+      # Length sanity: a PVT_K1 base58 key is ~55 chars total; flag if wildly off.
+      KEY_LEN=${#XPR_PRIVATE_KEY}
+      if [ "$KEY_LEN" -lt 50 ] || [ "$KEY_LEN" -gt 80 ]; then
+        warn "XPR_PRIVATE_KEY length ($KEY_LEN) is outside the expected 50-80 char range"
+        warn "proceeding anyway, but proton key:add will likely fail"
+      fi
+      ;;
+    *)
+      die "XPR_PRIVATE_KEY does not start with PVT_K1_ — likely wrong format or mangled in transit. Verify the key was pasted intact."
+      ;;
+  esac
 
   # echo "no" answers the post-add "encrypt your stored keys?" prompt.
   # The key lands in the CLI's keychain on disk; we accept that tradeoff
@@ -142,6 +184,7 @@ if [ -n "${XPR_PRIVATE_KEY:-}" ]; then
     proton key:list
   else
     warn "proton key:add failed — falling through to interactive instructions"
+    warn "common causes: (1) whitespace/newlines pasted with the key, (2) wrong key, (3) account already registered with this key"
   fi
 fi
 

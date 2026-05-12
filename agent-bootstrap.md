@@ -120,9 +120,12 @@ node -e "
     const info = await rpc.get_info();
     console.log('chain_id:', info.chain_id, 'head:', info.head_block_num);
 
+    // listAgents returns { items, hasMore, nextCursor } — verified against
+    // @xpr-agents/sdk@0.2.6 AgentRegistry.js line 123. The .items field is
+    // an Agent[]; do NOT call .map directly on the wrapper.
     const agents = new AgentRegistry(rpc);
-    const all = await agents.listAgents({ limit: 5 });
-    console.log('first 5 agents:', all.map(a => a.name));
+    const result = await agents.listAgents({ limit: 5 });
+    console.log('first 5 agents:', result.items.map(a => a.account));
   })();
 "
 ```
@@ -204,22 +207,51 @@ Re-running is safe — `npm install` and `git pull` are both idempotent.
 **Bootstrap chat prompt.** Paste the following into the Pinata agent's first session — the agent runs the script, which either auto-provisions the key from `XPR_PRIVATE_KEY` or prints the manual command:
 
 ```
-You are an XPR Network agent. Bootstrap yourself by running:
+You are an XPR Network agent on a managed console (Pinata Agents).
+Bootstrap yourself.
+
+═══════════════════════════════════════════════════════════════
+HARD RULES — read these before doing anything
+═══════════════════════════════════════════════════════════════
+1. NEVER run `proton key:add` without arguments. This console has
+   no real TTY; the interactive prompt will hang or appear to work
+   but mangle the input.
+2. ALWAYS use the non-interactive form:
+       echo "no" | proton key:add PVT_K1_<the-actual-key>
+3. If you see "Error: invalid base-58 value" — the key was mangled
+   in transit (whitespace, smart quotes, line breaks). STOP. Ask
+   me to re-send it; do not retry. Do not echo the key back to me
+   when asking.
+4. After the key is loaded, NEVER store or repeat it. Confirm only
+   with `proton key:list`, which redacts the private value.
+═══════════════════════════════════════════════════════════════
+
+Step 1 — Run the bootstrap script:
 
   curl -fsSL https://raw.githubusercontent.com/XPRNetwork/xpr-network-dev-skill/main/scripts/agent-bootstrap.sh | bash
 
-Report the output of each step.
+Report the output. The script handles installs, PATH fixup, repo
+clone, and a read-only smoke test. Stop and ask me if it fails.
 
-If the script auto-loads the key from XPR_PRIVATE_KEY: confirm with
-`proton key:list`, then read ./skills/xpr-network-dev/skill/SKILL.md
-and summarize the reference docs available to you.
+Step 2 — Keychain provisioning:
 
-If the script prints manual keychain instructions: prompt me for the
-private key — do not log or echo it. Then run the non-interactive
-command shown (`echo "no" | proton key:add PVT_K1_…`). After
-`proton key:list` shows my account, read SKILL.md and summarize.
+  a) If the script said "key added to proton CLI keychain" because
+     XPR_PRIVATE_KEY was set in Pinata Secrets: confirm with
+     `proton key:list` and move on.
 
-Then await my next instruction.
+  b) Otherwise: ask me to provide the key. When I send it, run
+     EXACTLY:
+
+         echo "no" | proton key:add <key-you-received>
+
+     Then run `proton key:list` to verify the account is registered.
+     Apply the HARD RULES above.
+
+Step 3 — Ground yourself:
+
+  Read ./skills/xpr-network-dev/skill/SKILL.md and summarize the
+  reference docs available to you (file name + one-line scope each).
+  Then await my next instruction.
 ```
 
 ---
@@ -237,7 +269,29 @@ No reinstall, no re-keychain.
 
 ## Troubleshooting
 
-**"`proton: command not found`" after `npm i -g @proton/cli`.** Add your global npm bin to `PATH`. Run `npm config get prefix` and add `<that-path>/bin` to `PATH`. On Pinata's workspace, this usually means adding to `~/.bashrc` so it persists.
+**"`proton: command not found`" after `npm i -g @proton/cli`.** Global npm bin isn't on `PATH`. The bootstrap script auto-detects and prepends `$(npm config get prefix)/bin` for the rest of its run, but the *operator's* console may still need it. Add to `~/.bashrc` (or the runtime's persistence layer) to persist across sessions:
+
+```bash
+export PATH="$(npm config get prefix)/bin:$PATH"
+```
+
+**"`Error: invalid base-58 value`" from `proton key:add`.** The key was mangled in transit. Chat interfaces commonly inject:
+- Leading/trailing whitespace or newlines
+- Smart quotes (curly `'` `"` instead of straight `'` `"`)
+- Word-wrap line breaks mid-key
+- Surrounding backticks/code fences left in by the paster
+
+The bootstrap script's `XPR_PRIVATE_KEY` path strips ASCII whitespace and verifies the `PVT_K1_` prefix before calling `proton key:add`, but it can't catch every form of corruption. If you hit this: re-send the key in a way that preserves it exactly (Pinata Secrets, file paste, or a separate plain-text channel) and retry. **Do not loop on retries** — three failed `proton key:add` attempts in 60 seconds with different mangled forms of the same key is a real footgun for accidental key disclosure.
+
+**`proton key:add` hangs forever on a managed console.** No TTY. Use the non-interactive recipe instead:
+
+```bash
+echo "no" | proton key:add PVT_K1_yourkey
+```
+
+Never run bare `proton key:add` in a Pinata agent, a CI container, a thin web console, or anywhere `tty -s` returns false. See Step 2b.
+
+**`TypeError: result.map is not a function` from the smoke test.** You're running an older version of `agent-bootstrap.md` against a current `@xpr-agents/sdk`. The SDK's `listAgents()` returns `{ items, hasMore, nextCursor }` — call `.items.map(a => a.account)` on the result. Pull the latest doc; this was a bug in the original publication.
 
 **"`Buffer.from(undefined)` / `TypeError` on submit-order.** You're hitting an older copy of `metalx-dex.md`. Step 3's `git pull` fixes this — the snippet was corrected in PR #18 (May 2026).
 
