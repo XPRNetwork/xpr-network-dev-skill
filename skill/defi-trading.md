@@ -892,7 +892,7 @@ Pool row structure:
 **On-chain mechanism** (for programmatic integrators talking to `proton.swaps` without going through the MetalX UI):
 
 - LP slice = `pools[i].fee.exchange_fee` — 20 bps on pools exposed in the MetalX UI.
-- Burns/Grants slice = `globall.exchange_fee_for_protocol` — 10 bps, flat. Routed to the `protocolfee1` account; governance-mutable via the contract's `globalfee` action.
+- Burns/Grants slice = `globall.exchange_fee_for_protocol` — 10 bps, flat. Sent on-chain to the `fee.swaps` account (verified via `get_account` and outbound transfer history); governance-mutable via the contract's `globalfee` action. From there, MetalX disposes of accumulated XPR by burning or routing to XPR Grants quarterly (per [docs.metalx.com](https://docs.metalx.com/swap-pools-and-farms/what-is-metal-x-swap/swap-fees-and-discounts)).
 
 The two slices compound (protocol fee comes off the input first, then the AMM math applies the LP fee) — the difference vs adding is negligible at these magnitudes.
 
