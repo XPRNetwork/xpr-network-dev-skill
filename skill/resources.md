@@ -291,9 +291,9 @@ curl -s -X POST https://proton.eosusa.io/v1/chain/get_table_rows \
 
 | Platform | Link |
 |----------|------|
-| **Discord** | https://discord.gg/xprnetwork |
 | **Telegram** | https://t.me/XPRNetwork |
 | **Twitter/X** | https://x.com/XPRNetwork |
+| **Help Desk** | https://help.xprnetwork.org |
 
 ---
 
@@ -365,7 +365,7 @@ proton table mycontract mytable
 
 - **Documentation issues**: https://github.com/XPRNetwork/ts-smart-contracts/issues
 - **CLI issues**: https://github.com/XPRNetwork/proton-cli/issues
-- **General questions**: Discord #developers channel
+- **General questions**: [Telegram](https://t.me/XPRNetwork) or the official [Help Desk](https://help.xprnetwork.org)
 
 ---
 

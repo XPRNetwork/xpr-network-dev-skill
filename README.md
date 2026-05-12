@@ -325,7 +325,8 @@ If you're touching a reference module, also include the curl / RPC call you used
 - **Official Docs**: https://docs.xprnetwork.org
 - **GitHub**: https://github.com/XPRNetwork
 - **Block Explorer**: https://explorer.xprnetwork.org
-- **Discord**: https://discord.gg/xprnetwork
+- **Telegram**: https://t.me/XPRNetwork
+- **Help Desk**: https://help.xprnetwork.org — official support
 - **Governance DAO**: https://gov.xprnetwork.org — token-listing votes happen at [community #7](https://gov.xprnetwork.org/communities/7)
 
 **Agent infrastructure**
