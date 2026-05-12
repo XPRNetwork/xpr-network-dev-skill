@@ -760,6 +760,8 @@ Holders of limited edition NFT DEX Keys receive **100% fee discount**.
 
 Metal X Swap is an automated market maker (AMM) for instant token swaps.
 
+> **Under the hood:** the MetalX Swap UI is a front-end on top of the chain-native **`proton.swaps`** contract — same pools, same liquidity, same v2 constant-product math. The MetalX app handles wallet, routing and fees-discount logic, but the on-chain venue is `proton.swaps`. For contract-level details (pool table layout, swap memo format, `liquidityadd` / `liquidityrmv` actions, multi-hop), see [`defi-trading.md`](./defi-trading.md) — the "Proton Swaps (AMM Liquidity Pools)" section. Programmatic integrators talk to `proton.swaps` directly; there is no separate MetalX-branded swap contract on chain (verified via `get_account` against likely candidates like `metalx.swap`, `swap.metalx`, etc. — none exist).
+
 ### Available Swap Tokens
 
 XPR, XUSDC, XBTC, XETH, XDOGE, XBCH, XLTC, XUSDT, XUNI, XBNB, XEOS, XADA, METAL, XMT, LOAN, STRX, MINT, SNIPS, XLUNR
