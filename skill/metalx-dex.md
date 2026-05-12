@@ -766,19 +766,14 @@ Holders of limited edition NFT DEX Keys receive **100% fee discount**.
 
 ### Swap Fees
 
-A swap pays **two fees**, not one. Verified against the `proton.swaps` ABI and `globall` singleton:
+Canonical source: [docs.metalx.com → Swap fees and discounts](https://docs.metalx.com/swap-pools-and-farms/what-is-metal-x-swap/swap-fees-and-discounts).
 
-- **LP fee** — `pools[i].fee.exchange_fee`, stays in the pool. **0.20%** (20 bps) on most pools; **0.05%** (5 bps) on the XUSDT/XUSDC stablecoin pool.
-- **Protocol fee** — `globall.exchange_fee_for_protocol`, currently **0.10%** (10 bps), flat on every pool. Routed to the `protocolfee1` account. Governance-mutable via the contract's `globalfee` action.
+**Per-trade fee on MetalX Swap: 0.3%**, split as:
 
-The protocol fee comes off the input first, then the AMM math applies the LP fee — they compound rather than add exactly, but the difference is negligible at these magnitudes.
+- **0.2% → Liquidity providers** (LPs) of that pool
+- **0.1% → XPR burns or XPR Grants** — converted to XPR and burned, or added to XPR Grants, at the end of each quarter
 
-| Pool | LP fee | Protocol fee | **Total user fee** |
-|------|--------|--------------|--------------------|
-| Standard (27 of 28 live pools) | 0.20% | 0.10% | **~0.30%** |
-| Stablecoin (XUSDT/XUSDC only)  | 0.05% | 0.10% | **~0.15%** |
-
-For the full breakdown, calculation snippet, and `calculateSwapOutput` reference, see [`defi-trading.md`](./defi-trading.md#proton-swaps-amm-liquidity-pools) → *Exchange Fees*. Don't hard-code the LP-fee number as the total swap fee — that drops the protocol slice.
+The MetalX Swap UI sits on top of the on-chain `proton.swaps` contract. For programmatic integrators talking to `proton.swaps` directly (without going through the MetalX UI), see [`defi-trading.md`](./defi-trading.md#proton-swaps-amm-liquidity-pools) for the AMM math, swap snippet, and contract-level details.
 
 #### Swap Fee Discounts (by Staked XPR)
 
