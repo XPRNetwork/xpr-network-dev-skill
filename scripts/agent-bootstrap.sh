@@ -108,32 +108,71 @@ RPC_ENDPOINT="$RPC_ENDPOINT" node -e "
 "
 ok "chain reachable, capabilities + knowledge wired"
 
-# ─── Manual step (cannot be scripted) ───────────────────────────────────
-say "Step 2 — Provision the proton CLI keychain (MANUAL — requires interactive key paste)"
-cat <<'EOF'
-  Run the following commands yourself. The script cannot do this safely —
-  `proton key:add` requires interactive key paste and the key must not
-  pass through any logging surface.
+# ─── Step 2 — Provision the proton CLI keychain ─────────────────────────
+# Two paths: non-interactive if XPR_PRIVATE_KEY is set in env (managed
+# consoles like Pinata Agents), interactive instructions printed otherwise
+# (human at a terminal). See agent-bootstrap.md → Step 2 for the threat-
+# model tradeoff between the two.
 
-      npm install -g @proton/cli
-      proton chain:set proton              # or proton-test for testnet
-      proton key:add                       # paste your key when prompted
+KEYCHAIN_STATUS="not provisioned (see manual steps printed above)"
+
+if ! command -v proton >/dev/null 2>&1; then
+  say "Step 2 — Installing @proton/cli"
+  npm install -g @proton/cli
+  ok "proton CLI installed ($(proton --version 2>/dev/null || echo 'version unknown'))"
+fi
+
+# Make sure the chain is set; this is non-interactive and idempotent.
+proton chain:set "${PROTON_CHAIN:-proton}" >/dev/null 2>&1 || true
+
+if [ -n "${XPR_PRIVATE_KEY:-}" ]; then
+  say "Step 2 — Non-interactive keychain provisioning (XPR_PRIVATE_KEY is set)"
+  warn "the key will be briefly visible in 'ps' while 'proton key:add' runs"
+  warn "this script assumes a trusted single-tenant container (Pinata, dedicated VM)"
+  warn "do NOT run this path on a shared host"
+
+  # echo "no" answers the post-add "encrypt your stored keys?" prompt.
+  # The key lands in the CLI's keychain on disk; we accept that tradeoff
+  # because the alternative (key in agent process memory) is worse.
+  if echo "no" | proton key:add "$XPR_PRIVATE_KEY" >/dev/null 2>&1; then
+    ok "key added to proton CLI keychain"
+    unset XPR_PRIVATE_KEY  # clear from this script's env asap
+    KEYCHAIN_STATUS="provisioned via XPR_PRIVATE_KEY (env var cleared)"
+    say "Step 2 verification — proton key:list"
+    proton key:list
+  else
+    warn "proton key:add failed — falling through to interactive instructions"
+  fi
+fi
+
+if [ "$KEYCHAIN_STATUS" = "not provisioned (see manual steps printed above)" ]; then
+  say "Step 2 — Provision the proton CLI keychain (manual)"
+  cat <<'EOF'
+  XPR_PRIVATE_KEY is not set; the script will not write your key.
+  Run the following yourself.
+
+  Interactive (you're at a terminal):
+
+      proton key:add                       # paste your key, answer encrypt prompt
       proton key:list                      # verify the account appears
 
-  After this step completes once per agent, the key lives in the CLI's
-  encrypted keychain and persists across sessions. The agent process
-  never holds the key directly — every signed transaction shells out
-  to `proton transaction:push`. See skill/backend-patterns.md →
-  "Security: Key Isolation" for the rationale.
+  Non-interactive (managed console, no TTY):
+
+      echo "no" | proton key:add PVT_K1_yourkey
+      proton key:list
+
+  See agent-bootstrap.md → Step 2 for the threat-model tradeoff and how
+  to re-encrypt later with `proton key:lock <password>`.
 
 EOF
+fi
 
 say "Bootstrap complete"
 cat <<EOF
   Capabilities (xpr-agents plugin)  : installed
   Knowledge (xpr-network-dev-skill) : $SKILL_DIR
   RPC reachable                     : $RPC_ENDPOINT
-  Keychain provisioned              : (still up to you — see Step 2 above)
+  Keychain                          : $KEYCHAIN_STATUS
 
   Next: have the agent read $SKILL_DIR/skill/SKILL.md, summarize the
   reference docs available, and then proceed with its first task.

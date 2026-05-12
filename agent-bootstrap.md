@@ -45,20 +45,45 @@ node -e "const oc = require('@xpr-agents/openclaw'); \
 
 You should see `createCliSession` and several registry/tool exports.
 
-### Step 2 — Provision the proton CLI keychain (interactive)
+### Step 2 — Provision the proton CLI keychain
 
-The agent process **must never hold the XPR private key directly**. All signing routes through the `proton` CLI's encrypted keychain.
+The agent process **must never hold the XPR private key directly at signing time**. All signing routes through the `proton` CLI's encrypted keychain. There are two ways to load the key into the keychain — pick the one that fits your environment:
+
+#### 2a — Interactive (human at a terminal)
 
 ```bash
 npm install -g @proton/cli
 proton chain:set proton              # or proton-test for testnet
-proton key:add                       # interactive — paste the key once
+proton key:add                       # paste the key when prompted
 proton key:list                      # verify the account is registered
 ```
 
-This is the **only step that cannot be scripted** because `proton key:add` requires interactive paste. Do it once per agent at provisioning time; the encrypted keychain persists across sessions.
+`proton key:add` prompts twice: once for the key itself, once with *"Would you like to encrypt your stored keys with a password?"* Answer the second prompt how you like — a password gives you encryption-at-rest in exchange for needing `proton key:unlock` before signing.
 
-> **Why this matters.** Every other approach (env-var private key, `.env` file, secrets-manager-then-zero) leaves the key reachable from the agent's process memory at least briefly. The CLI keychain pattern means the key bytes never enter the Node.js process the agent runs in. A malicious or hallucinating agent later in the session has no key to leak. See `skill/backend-patterns.md` → *Security: Key Isolation* for the full rationale.
+#### 2b — Non-interactive (managed consoles, containers, scripts)
+
+On Pinata Agents, Cloudflare gateways, CI containers, or anywhere without a real TTY, the interactive prompts will hang. Bypass them by passing the key as an argument and piping the encrypt-prompt answer:
+
+```bash
+npm install -g @proton/cli
+proton chain:set proton
+echo "no" | proton key:add PVT_K1_yourkey   # one-shot, no prompts
+proton key:list
+```
+
+Notes:
+
+- **There is no `--no-encrypt` / `--encrypt` flag.** Verified against `@proton/cli@0.1.98`. The `echo "no" | …` pipe is the supported way to auto-answer the prompt.
+- **The key lands in the CLI's keychain as plaintext on disk.** Acceptable for a trusted single-tenant container (the agent host's threat model already assumes the host itself isn't compromised). Not acceptable on a shared box. Lock it later with `proton key:lock <password>` if you want encryption-at-rest; `proton key:unlock <password>` flips it back to plaintext.
+- **The key is briefly visible in `ps` while `proton key:add` is running** (because it's a positional argument). On Pinata's per-agent containers `ps` is uid-scoped to the agent itself, so this is the same actor that already holds the key — no escalation. On a shared host, it's an exposure.
+- After loading, signing is also non-interactive — `proton transaction:push '<json>'` and `proton action <contract> <action> '<args>' <account>@active` both return without prompts as long as the keystore is unlocked (or never locked).
+- **Pre-existing locked keystores:** `key:add` skips the encryption prompt entirely when `isLocked === true` is already set, but any signing op still needs `proton key:unlock <password>` first.
+
+#### Why the keychain at all
+
+Every other approach (env-var private key passed to `JsSignatureProvider`, `.env` file, secrets-manager-then-zero) leaves the key reachable from the agent's **process memory at signing time** — every tool call, every log line, every paste into the model's context window is a potential leak surface. The CLI keychain pattern shells signing out to a separate `proton transaction:push` process, so the key bytes never enter the Node.js process the agent runs in.
+
+The non-interactive path (2b) weakens this slightly at *provisioning* time — the key briefly passes through the script's env / pipe / argv — but the *runtime* property still holds: once provisioning is done, the agent process never sees the key again. That tradeoff is what makes managed-console deployment viable. See `skill/backend-patterns.md` → *Security: Key Isolation* for the full rationale.
 
 ### Step 3 — Install the dev knowledge
 
@@ -171,22 +196,30 @@ Re-running is safe — `npm install` and `git pull` are both idempotent.
 3. **Submit to ClawHub.** ClawHub is OpenClaw's skill marketplace (used by xpr-agents for 8 of its skills). Slower to land; gives you a stable slug for distribution. Best for long-term broad distribution.
 
 **Secrets.** Provision in the Pinata Secrets section:
+
 - `XPR_ACCOUNT` — the on-chain account the agent operates as
 - `ANTHROPIC_API_KEY` (or other model provider) — for the LLM backing the agent
-- The chain private key does **not** go in Secrets. It goes into the proton CLI keychain via Step 2.
+- `XPR_PRIVATE_KEY` — **only if** you're using the non-interactive provisioning path (Step 2b). Pinata's per-agent container is single-tenant, so the threat-model tradeoff in Step 2b is acceptable. The bootstrap script picks the key up from env, calls `proton key:add` once, then `unset`s the variable. After that the agent process never sees the key again — runtime signing still routes through the keychain via subprocess. If you'd rather paste the key once in chat instead of putting it in Secrets, leave this unset and the script will print the manual command.
 
-**Bootstrap chat prompt.** Paste the following into the Pinata agent's first session — the agent will execute each step and stop where manual input is needed:
+**Bootstrap chat prompt.** Paste the following into the Pinata agent's first session — the agent runs the script, which either auto-provisions the key from `XPR_PRIVATE_KEY` or prints the manual command:
 
 ```
 You are an XPR Network agent. Bootstrap yourself by running:
 
   curl -fsSL https://raw.githubusercontent.com/XPRNetwork/xpr-network-dev-skill/main/scripts/agent-bootstrap.sh | bash
 
-Report the output of each step. When the script stops at the keychain
-provisioning, prompt me for the private key — do not log or echo it.
-After `proton key:add` returns and `proton key:list` shows my account,
-read ./skills/xpr-network-dev/skill/SKILL.md and summarize the
-reference docs available to you. Then await my next instruction.
+Report the output of each step.
+
+If the script auto-loads the key from XPR_PRIVATE_KEY: confirm with
+`proton key:list`, then read ./skills/xpr-network-dev/skill/SKILL.md
+and summarize the reference docs available to you.
+
+If the script prints manual keychain instructions: prompt me for the
+private key — do not log or echo it. Then run the non-interactive
+command shown (`echo "no" | proton key:add PVT_K1_…`). After
+`proton key:list` shows my account, read SKILL.md and summarize.
+
+Then await my next instruction.
 ```
 
 ---
