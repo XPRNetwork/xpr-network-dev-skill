@@ -123,6 +123,7 @@ For any AI tool, you can paste sections directly:
 | Module                                               | Description                                     |
 | ---------------------------------------------------- | ----------------------------------------------- |
 | [metalx-dex.md](skill/metalx-dex.md)                 | Complete MetalX DEX API reference               |
+| [alcor-dex.md](skill/alcor-dex.md)                   | Alcor order book + v3 AMM + OTC reference       |
 | [defi-trading.md](skill/defi-trading.md)             | Trading bots, perps architecture, DeFi patterns |
 | [loan-protocol.md](skill/loan-protocol.md)           | LOAN lending protocol integration               |
 | [oracles-randomness.md](skill/oracles-randomness.md) | Price oracles, verifiable random numbers        |
