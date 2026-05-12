@@ -1,6 +1,11 @@
-# XPR Network Developer Skill for Claude Code
+# XPR Network Developer Skill
 
-A comprehensive skill package that enhances Claude's capabilities for XPR Network blockchain development. This skill provides Claude with deep knowledge of smart contract development, CLI tools, frontend integration, and best practices specific to the XPR Network ecosystem.
+A comprehensive, ABI-verified knowledge layer for XPR Network development. Use it two ways:
+
+- **In Claude Code** (and any AI assistant that reads markdown) — install once, the assistant loads the right module on demand when you ask about smart contracts, DEX trading, NFTs, lending, agents, or infrastructure. See [Installation](#installation).
+- **As the brain for a server-side autonomous agent** — paired with the [`@xpr-agents/openclaw`](https://github.com/XPRNetwork/xpr-agents) plugin, this skill gives a Pinata-hosted (or self-hosted) OpenClaw agent the knowledge to use its tools correctly: which memo means "deposit" vs "swap" vs "stranded funds", what the real swap fees are, when `liquidityadd` will silently fail. See [`agent-bootstrap.md`](./agent-bootstrap.md).
+
+Every fact in this skill is verified against live mainnet ABIs, contract source, and Hyperion traces — not pattern-matched from training data.
 
 ## What is XPR Network?
 
@@ -93,6 +98,10 @@ Add the `skill/` folder to your project and Cursor will index it.
 ### GitHub Copilot / Other Tools
 
 Copy relevant module content into your prompt context or project documentation. The knowledge is tool-agnostic.
+
+### OpenClaw / Pinata Agents
+
+For autonomous server-side agents (Pinata, self-hosted OpenClaw, future hosts), this skill is the **knowledge layer** that pairs with [`@xpr-agents/openclaw`](https://github.com/XPRNetwork/xpr-agents) as the **capabilities layer**. The bootstrap procedure — install the openclaw plugin, provision the proton CLI keychain, clone this skill into the agent workspace, smoke test — is documented in [`agent-bootstrap.md`](./agent-bootstrap.md). One-command provisioning script in [`scripts/agent-bootstrap.sh`](./scripts/agent-bootstrap.sh).
 
 ### Direct Reference
 
@@ -199,10 +208,12 @@ Claude will load specialized modules on demand based on your queries.
 
 ### Backend Development
 
-- Server-side transaction signing
+- **proton CLI keychain pattern** — keys never enter agent process memory; signing shells out to `proton transaction:push`
+- `@xpr-agents/openclaw` `createCliSession` as the keychain-backed `ProtonSession`
 - Automated bots and scheduled tasks
-- Security best practices for key management
+- `@xpr-agents/sdk` registries (Agent, Escrow, Validation, Feedback) for read + write
 - Hyperion and Light API integration
+- Legacy `JsSignatureProvider` pattern (documented as the discouraged fallback, not the default)
 
 ### Token & Identity
 
@@ -220,14 +231,27 @@ Claude will load specialized modules on demand based on your queries.
 
 ### DeFi and Trading
 
-- MetalX DEX integration (order book, trades)
+- **MetalX** order-book DEX (the `dex` contract) — orders, deposits, lifecycle
+- **MetalX Swap** AMM (the `proton.swaps` contract) — verified 0.30% total swap fee (0.20% LP + 0.10% protocol), three-step `depositprep` → empty-memo transfer → `liquidityadd` flow
+- **Alcor DEX** — order book + v3 AMM + OTC, base/quote inversion gotcha
+- **SimpleDEX** — token launch with bonding curves + AMM graduation
 - Trading bot patterns (grid bot, market maker)
 - Perpetual futures architecture and building blocks
-- LOAN lending protocol (supply, borrow, liquidations)
+- **LOAN protocol** — supply, borrow, liquidations
+
+### Server-Side Agents
+
+- Deploying an autonomous XPR Network agent on Pinata (hosted OpenClaw) or self-hosted runtimes — see [`agent-bootstrap.md`](./agent-bootstrap.md)
+- Capabilities layer: 55 MCP tools across identity, reputation, validation, escrow, A2A via `@xpr-agents/openclaw`
+- Knowledge layer: this skill, loaded into the agent workspace as on-demand reference docs
+- Idempotent provisioning script ([`scripts/agent-bootstrap.sh`](./scripts/agent-bootstrap.sh)) with PATH fixup, key-format validation, read-only smoke test
+- Non-interactive `proton key:add` for managed consoles (no TTY)
 
 ### Safety & Troubleshooting
 
 - **CRITICAL**: Never modify existing table structures with data
+- **CRITICAL**: Token transfers to the `dex` contract MUST use empty memo (otherwise funds are stranded with no recovery)
+- **CRITICAL**: `liquidityadd` on `proton.swaps` requires `depositprep` + empty-memo transfers first — calling it cold fails with `insufficient balance`
 - Pre-deployment checklist
 - Recovery procedures
 - Multi-contract deployment safety
@@ -244,17 +268,29 @@ Contributions are welcome! Please:
 
 ### Areas for Contribution
 
-- Additional code examples
-- New patterns from production contracts
-- Corrections and clarifications
+- **Verified corrections** — when you hit a doc that doesn't match on-chain reality, open a PR with the curl/source citation; this skill prioritizes verified-against-mainnet over pattern-matched-against-training-data
+- **New patterns from production** — agent operator patterns, novel contract integrations, real failure modes you've debugged
+- **Coverage gaps** — token contract + precision registry, market-id lists for the DEXes, additional safety callouts
+- **Additional code examples** — kept ABI-current; include the curl/RPC call that verified the example
 - Translations
 
+Run `./scripts/validate-skill.sh` before opening a PR to catch broken links and obvious skill-layout issues.
+
 ## Resources
+
+**XPR Network**
 
 - **Official Docs**: https://docs.xprnetwork.org
 - **GitHub**: https://github.com/XPRNetwork
 - **Block Explorer**: https://explorer.xprnetwork.org
 - **Discord**: https://discord.gg/xprnetwork
+- **Governance DAO**: https://gov.xprnetwork.org — token-listing votes happen at [community #7](https://gov.xprnetwork.org/communities/7)
+
+**Agent infrastructure**
+
+- **xpr-agents repo**: https://github.com/XPRNetwork/xpr-agents — `@xpr-agents/openclaw` plugin, `@xpr-agents/sdk`, agent-runner starter kit
+- **Agent registry (live)**: https://agents.protonnz.com
+- **Pinata Agents** (hosted OpenClaw): https://docs.pinata.cloud/agents/overview.md
 
 ## License
 
