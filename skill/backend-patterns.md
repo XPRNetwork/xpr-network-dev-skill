@@ -22,8 +22,8 @@ Backend integration differs from frontend (wallet) integration:
 ### One-time operator setup
 
 ```bash
-# Install the hardened proton CLI fork (redacts keys from key:list output)
-npm i -g github:paulgnz/proton-cli#security/key-list-redact
+# Install the proton CLI
+npm i -g @proton/cli
 
 # Pick the network
 proton chain:set proton              # or proton-test
@@ -553,14 +553,14 @@ const { rpc, session } = createCliSession({
 Operator setup happens once, outside the agent:
 
 ```bash
-npm i -g github:paulgnz/proton-cli#security/key-list-redact
+npm i -g @proton/cli
 proton chain:set proton
 proton key:add                # paste key once, stored encrypted in CLI keychain
 ```
 
 ### What this doesn't fix (honest list)
 
-- **The proton CLI itself can be attacked.** You trust whatever guarantees the CLI provides for its keychain — that's out of scope for the agent project. The hardened fork (`security/key-list-redact`) at least redacts keys from `key:list` output.
+- **The proton CLI itself can be attacked.** You trust whatever guarantees the CLI provides for its keychain — that's out of scope for the agent project.
 - **A2A still uses an EOSIO key in process.** Agent-to-agent signing needs to sign arbitrary messages, which the proton CLI doesn't expose. Use a separate `A2A_SIGNING_KEY` registered on a custom permission with no on-chain powers — limited blast radius (reputation only, not funds).
 - **OS-level isolation isn't perfect.** Root on the agent host can read the keychain. This refactor solves the application-level attack surface, not the host-level one.
 
@@ -862,7 +862,7 @@ function loadConfig(): Config {
   if (process.env.XPR_PRIVATE_KEY) {
     throw new Error(
       'XPR_PRIVATE_KEY is set but is no longer supported.\n' +
-      '  1. Install proton CLI: npm i -g github:paulgnz/proton-cli#security/key-list-redact\n' +
+      '  1. Install proton CLI: npm i -g @proton/cli\n' +
       '  2. Add your key:        proton key:add\n' +
       '  3. Remove XPR_PRIVATE_KEY from your .env'
     );
@@ -872,7 +872,7 @@ function loadConfig(): Config {
   try {
     execSync(`proton key:list`, { stdio: 'pipe' });
   } catch {
-    throw new Error('proton CLI not found in PATH. Install with: npm i -g github:paulgnz/proton-cli#security/key-list-redact');
+    throw new Error('proton CLI not found in PATH. Install with: npm i -g @proton/cli');
   }
 
   return {
