@@ -383,12 +383,13 @@ Key components:
 
 ### Download Snapshot
 
-Instead of syncing from genesis (which takes days), use a recent snapshot. **Public snapshot mirrors come and go** — operators run them as a courtesy and URLs change without notice. Don't hard-code a mirror in production tooling; ask in the XPR Network Discord (`#node-operators`) for a currently-live mirror, or generate your own from a known-good node.
+Instead of syncing from genesis (which takes days), use a recent snapshot. **Public snapshot mirrors come and go** — operators run them as a courtesy and URLs change without notice. Don't hard-code a mirror in production tooling; ask in the [XPR Network validators group on Telegram](https://t.me/XPRNetwork/935112) for a currently-live mirror, or generate your own from a known-good node.
 
 The commands below assume a `.bin.zst` snapshot at `$SNAPSHOT_URL`:
 
 ```bash
-# 1) Find a currently-live mirror (ask in #node-operators or check your peer list).
+# 1) Find a currently-live mirror (ask in the XPR Network validators
+#    group on Telegram: https://t.me/XPRNetwork/935112 — or check your peer list).
 SNAPSHOT_URL="https://<operator-provided-mirror>/latest-snapshot.bin.zst"
 
 # 2) Download
