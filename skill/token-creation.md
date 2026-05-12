@@ -448,73 +448,13 @@ unwrap(account: Name, quantity: Asset, destinationAddress: string): void {
 
 ---
 
-## List Token on DEX
+## Listing a Token on MetalX
 
-### Add to MetalX (Swap UI — `proton.swaps`)
+**Listing isn't self-serve.** Pool creation on `proton.swaps` (the contract behind MetalX's Swap UI) is gated — there's no action a token issuer can call to spin up a pool on their own. New tokens are admitted through the XPR Network governance DAO:
 
-The MetalX **Swap** UI is backed by the `proton.swaps` AMM contract. Listing a new token means standing up a pool and seeding it with liquidity. There is **no `addliq:...` memo path** on `proton.swaps` — that pattern doesn't exist in the contract's transfer handler. The correct flow uses the explicit `liquidityadd` action against a pre-funded deposit balance.
+- **Governance community:** <https://gov.xprnetwork.org/communities/7>
 
-1. Ensure your token contract is deployed.
-2. Have the pool created on chain (via `proton.swaps`'s `proposaladd`/`propapprove` governance flow, or coordinate with a MetalX operator). Confirm the pool's `lt_symbol` exists by querying `get_table_rows code=proton.swaps scope=proton.swaps table=pools`.
-3. Seed initial liquidity using the three-step deposit + `liquidityadd` pattern documented in `defi-trading.md` → *Proton Swaps (AMM Liquidity Pools)* → *Add Liquidity*. The short version:
-
-```typescript
-// Step 1: depositprep — reserve deposit-balance rows for both symbols.
-// Step 2: transfer each token to 'proton.swaps' with memo: '' (empty).
-// Step 3: liquidityadd — moves deposit balances into the pool.
-
-const actions = [
-  {
-    account: 'proton.swaps',
-    name: 'depositprep',
-    authorization: [{ actor: account, permission: 'active' }],
-    data: {
-      owner: account,
-      symbols: [
-        { sym: '4,XPR', contract: 'eosio.token' },
-        { sym: '4,MYTKN', contract: 'mytokencontract' }
-      ]
-    }
-  },
-  {
-    account: 'eosio.token',
-    name: 'transfer',
-    authorization: [{ actor: account, permission: 'active' }],
-    data: {
-      from: account,
-      to: 'proton.swaps',
-      quantity: '10000.0000 XPR',
-      memo: '' // ⚠️ MUST be empty — non-empty memos invoke the swap path.
-    }
-  },
-  {
-    account: 'mytokencontract',
-    name: 'transfer',
-    authorization: [{ actor: account, permission: 'active' }],
-    data: {
-      from: account,
-      to: 'proton.swaps',
-      quantity: '1000000.0000 MYTKN',
-      memo: '' // ⚠️ MUST be empty.
-    }
-  },
-  {
-    account: 'proton.swaps',
-    name: 'liquidityadd',
-    authorization: [{ actor: account, permission: 'active' }],
-    data: {
-      owner: account,
-      lt_symbol: '8,XPRMYTKN', // The pool's LP-token symbol.
-      add_token1: { quantity: '10000.0000 XPR', contract: 'eosio.token' },
-      add_token2: { quantity: '1000000.0000 MYTKN', contract: 'mytokencontract' },
-      add_token1_min: { quantity: '9900.0000 XPR', contract: 'eosio.token' },
-      add_token2_min: { quantity: '990000.0000 MYTKN', contract: 'mytokencontract' }
-    }
-  }
-];
-```
-
-See `defi-trading.md` for the full per-action parameter reference, slippage semantics, and recovery if `liquidityadd` reverts (funds remain in the deposit balance — call `withdrawall` to recover).
+Submit your listing request there; voters decide. Once a pool exists for your token, the technical seed-liquidity flow (`depositprep` → empty-memo transfers → `liquidityadd`) is documented in `defi-trading.md` → *Proton Swaps (AMM Liquidity Pools)* → *Add Liquidity*. This file stays focused on what a token issuer can do unilaterally (deploy, issue, airdrop).
 
 ---
 
