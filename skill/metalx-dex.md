@@ -427,14 +427,14 @@ Withdraws all funds from DEX back to user's wallet.
 
 ### JavaScript: Submit Order
 
+This places an order **directly on-chain** through the keychain-backed CLI session. The MetalX matching engine picks the order up from its chain indexer — you don't need to POST to `/orders/submit` for the order to exist. Look the resulting order up via `/orders/lifecycle` (see below) if you need MetalX's `ordinal_order_id`. If you need that ID synchronously in the submit response, see the legacy `signatureProvider` variant after this snippet.
+
 ```javascript
 // Recommended: route signing through the proton CLI keychain (key never in process).
 // One-time setup outside this script: `proton key:add` to load your key.
 // See backend-patterns.md "Security: Key Isolation" for context.
 const { createCliSession } = require('@xpr-agents/openclaw');
-const fetch = require('node-fetch');
 
-const SUBMIT_URL = 'https://dex.api.mainnet.metalx.com/dex/v1/orders/submit';
 const USERNAME = 'youraccount';
 
 const { rpc, session } = createCliSession({
@@ -444,6 +444,8 @@ const { rpc, session } = createCliSession({
 });
 
 // `session.link.transact(...)` shells out to `proton transaction:push`.
+// It always broadcasts and returns { transaction_id, processed } —
+// there is no broadcast:false / serializedTransaction path on this shape.
 
 const authorization = [{ actor: USERNAME, permission: 'active' }];
 
@@ -497,7 +499,35 @@ const actions = [
 ];
 
 async function submitOrder() {
-  const { serializedTransaction, signatures } = await session.link.transact(
+  // Atomic on-chain submission: transfer → placeorder → process in one tx.
+  const { transaction_id, processed } = await session.link.transact({ actions });
+  return { transaction_id, block_num: processed.block_num };
+}
+```
+
+<details>
+<summary>Legacy: <code>signatureProvider</code> for MetalX's <code>/orders/submit</code> endpoint (NOT recommended)</summary>
+
+Use this **only** if you need the matching engine's `ordinal_order_id` in the submit response and can't wait for the chain indexer. `/orders/submit` wants a **signed-but-not-broadcast** serialized transaction, which `createCliSession` cannot produce — it always broadcasts. This is one of the few documented exceptions where the keychain pattern doesn't apply; the private key has to be in process memory long enough to sign locally.
+
+```javascript
+const { JsonRpc, Api } = require('@proton/js');
+const { JsSignatureProvider } = require('eosjs/dist/eosjs-jssig');
+const fetch = require('node-fetch');
+
+const PRIVATE_KEY = process.env.XPR_PRIVATE_KEY; // ⚠️ key in process memory
+const rpc = new JsonRpc('https://rpc.api.mainnet.metalx.com');
+const api = new Api({
+  rpc,
+  signatureProvider: new JsSignatureProvider([PRIVATE_KEY]),
+  textDecoder: new TextDecoder(),
+  textEncoder: new TextEncoder(),
+});
+
+const SUBMIT_URL = 'https://dex.api.mainnet.metalx.com/dex/v1/orders/submit';
+
+async function submitViaMatchingEngine(actions) {
+  const { serializedTransaction, signatures } = await api.transact(
     { actions },
     { blocksBehind: 300, expireSeconds: 3000, broadcast: false }
   );
@@ -507,13 +537,16 @@ async function submitOrder() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       serialized_tx_hex: Buffer.from(serializedTransaction).toString('hex'),
-      signatures
-    })
+      signatures,
+    }),
   });
 
-  return response.json();
+  return response.json(); // includes order_id and ordinal_order_id
 }
 ```
+
+</details>
+
 
 ### JavaScript: Cancel Order
 
@@ -609,7 +642,7 @@ proton_action('dex', 'process', {'q_size': 25, 'show_error_msg': 0})
 
 > **Atomicity trade-off.** The original Python example bundled all three actions into a single atomic EOSIO transaction (via `pyeoskit.generate_packed_transaction`). This rewrite runs each action as its own `proton action` call to keep the private key in the CLI keychain. If step 2 or 3 fails, step 1's deposit is recoverable via `proton action dex withdrawall '{"account":"youraccount"}' youraccount` — the funds aren't lost, they sit in the user's DEX deposit balance until withdrawn or used.
 >
-> If you specifically need atomic multi-action signing or MetalX's `/orders/submit` endpoint (e.g. for the API's `ordinal_order_id` in the response), use the **JavaScript path above** — `createCliSession` handles the atomic case. `proton transaction` at the CLI level would be the obvious Python equivalent, but `@proton/cli@0.1.98`'s `transaction` command is currently broken (missing `JSON.parse` on its argument; tracked upstream).
+> If you need atomic multi-action signing, use the **JavaScript path above** — `createCliSession.link.transact({ actions })` bundles every action into a single on-chain transaction. If you specifically need MetalX's `/orders/submit` endpoint (e.g. for the synchronous `ordinal_order_id` in the response), no keychain path works: the endpoint wants a signed-but-not-broadcast serialized tx, which neither `createCliSession` nor `proton transaction:push` will produce. See the `<details>` legacy block under the JS Submit Order snippet for the `signatureProvider`-based escape hatch, and prefer the on-chain path plus `/orders/lifecycle` lookup unless you genuinely need the synchronous ID. `proton transaction` at the CLI level would be the obvious Python atomic equivalent, but `@proton/cli@0.1.98`'s `transaction` command is currently broken (missing `JSON.parse` on its argument; tracked upstream).
 
 ### Python: Get Order Lifecycle
 
