@@ -570,56 +570,46 @@ AMOUNT = 700
 BID_TOKEN = {'contract': 'eosio.token', 'symbol': 'XPR', 'precision': 4}
 ASK_TOKEN = {'contract': 'xmd.token', 'symbol': 'XMD', 'precision': 6}
 
-auth = [{'actor': USERNAME, 'permission': 'active'}]
 
-actions = [
-    {
-        'account': BID_TOKEN['contract'],
-        'name': 'transfer',
-        'authorization': auth,
-        'data': {
-            'from': USERNAME,
-            'to': 'dex',
-            'quantity': f'{AMOUNT:.{BID_TOKEN["precision"]}f} {BID_TOKEN["symbol"]}',
-            'memo': ''   # CRITICAL: must be empty — see "DEX Token Deposits" warning above
-        }
-    },
-    {
-        'account': 'dex',
-        'name': 'placeorder',
-        'authorization': auth,
-        'data': {
-            'market_id': MARKET_ID,
-            'account': USERNAME,
-            'order_type': ORDER_TYPE,
-            'order_side': ORDER_SIDE,
-            'fill_type': FILL_TYPE,
-            'bid_symbol': {'sym': f'{BID_TOKEN["precision"]},{BID_TOKEN["symbol"]}', 'contract': BID_TOKEN['contract']},
-            'ask_symbol': {'sym': f'{ASK_TOKEN["precision"]},{ASK_TOKEN["symbol"]}', 'contract': ASK_TOKEN['contract']},
-            'referrer': '',
-            'quantity': int(AMOUNT * pow(10, BID_TOKEN['precision'])),
-            'price': int(PRICE * pow(10, ASK_TOKEN['precision'])),
-            'trigger_price': 0
-        }
-    },
-    {
-        'account': 'dex',
-        'name': 'process',
-        'authorization': auth,
-        'data': {'q_size': 25, 'show_error_msg': 0}
-    }
-]
+def proton_action(contract: str, name: str, data: dict) -> str:
+    """Run one signed action via the proton CLI. Private key never enters Python."""
+    result = subprocess.run(
+        ['proton', 'action', contract, name, json.dumps(data), USERNAME],
+        check=True, capture_output=True, text=True,
+    )
+    return result.stdout
 
-# Hand the action array to the proton CLI. The CLI signs from its
-# encrypted keychain and broadcasts as a single atomic transaction.
-result = subprocess.run(
-    ['proton', 'transaction', json.dumps(actions)],
-    check=True, capture_output=True, text=True
-)
-print(result.stdout)
+
+# 1) Deposit XPR to the DEX (empty memo is mandatory — see warning above)
+proton_action(BID_TOKEN['contract'], 'transfer', {
+    'from': USERNAME,
+    'to': 'dex',
+    'quantity': f'{AMOUNT:.{BID_TOKEN["precision"]}f} {BID_TOKEN["symbol"]}',
+    'memo': '',
+})
+
+# 2) Place the order
+proton_action('dex', 'placeorder', {
+    'market_id': MARKET_ID,
+    'account': USERNAME,
+    'order_type': ORDER_TYPE,
+    'order_side': ORDER_SIDE,
+    'fill_type': FILL_TYPE,
+    'bid_symbol': {'sym': f'{BID_TOKEN["precision"]},{BID_TOKEN["symbol"]}', 'contract': BID_TOKEN['contract']},
+    'ask_symbol': {'sym': f'{ASK_TOKEN["precision"]},{ASK_TOKEN["symbol"]}', 'contract': ASK_TOKEN['contract']},
+    'referrer': '',
+    'quantity': int(AMOUNT * pow(10, BID_TOKEN['precision'])),
+    'price': int(PRICE * pow(10, ASK_TOKEN['precision'])),
+    'trigger_price': 0,
+})
+
+# 3) Tick the order queue
+proton_action('dex', 'process', {'q_size': 25, 'show_error_msg': 0})
 ```
 
-> **Note:** this path broadcasts directly to the chain. If you specifically need MetalX's `/orders/submit` endpoint (e.g. to receive an `ordinal_order_id` in the API response), use the JavaScript path above — Python doesn't have a stable equivalent of `createCliSession`'s `{ broadcast: false }` flow that returns a signed-but-unbroadcast transaction. For the vast majority of programmatic order placement, direct broadcast is equivalent.
+> **Atomicity trade-off.** The original Python example bundled all three actions into a single atomic EOSIO transaction (via `pyeoskit.generate_packed_transaction`). This rewrite runs each action as its own `proton action` call to keep the private key in the CLI keychain. If step 2 or 3 fails, step 1's deposit is recoverable via `proton action dex withdrawall '{"account":"youraccount"}' youraccount` — the funds aren't lost, they sit in the user's DEX deposit balance until withdrawn or used.
+>
+> If you specifically need atomic multi-action signing or MetalX's `/orders/submit` endpoint (e.g. for the API's `ordinal_order_id` in the response), use the **JavaScript path above** — `createCliSession` handles the atomic case. `proton transaction` at the CLI level would be the obvious Python equivalent, but `@proton/cli@0.1.98`'s `transaction` command is currently broken (missing `JSON.parse` on its argument; tracked upstream).
 
 ### Python: Get Order Lifecycle
 
