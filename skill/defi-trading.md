@@ -46,38 +46,55 @@ async function getMarkets() {
 
 ### Get Order Book
 
+The `/orders/depth` endpoint takes `symbol` (e.g. `XPR_XUSDC`) and `step` (price aggregation level), **not** `market_id`. Verified live against the API; passing `market_id` returns HTTP 400 `{"message":["symbol: Required","step: Expected number, received nan"]}`.
+
 ```typescript
-async function getOrderBook(marketId: string) {
+async function getOrderBook(symbol: string, step: number = 0.0001) {
   const response = await fetch(
-    `https://dex.api.mainnet.metalx.com/dex/v1/orders/depth?market_id=${marketId}`
+    `https://dex.api.mainnet.metalx.com/dex/v1/orders/depth?symbol=${symbol}&step=${step}`
   );
   const { data } = await response.json();
-  return data;  // { bids: [...], asks: [...] }
+  return data;  // { bids: [{level, count, bid, ask}, ...], asks: [...] }
 }
+
+// Usage
+const book = await getOrderBook('XPR_XUSDC');
 ```
 
 ### Get Latest Price
 
+`/trades/daily` returns the **24h OHLCV for every market**, not a single market. Filter client-side by `market_id` or `symbol`.
+
 ```typescript
-async function getLatestPrice(marketId: string) {
+async function getDailyStats(symbol?: string) {
   const response = await fetch(
-    `https://dex.api.mainnet.metalx.com/dex/v1/trades/daily?market_id=${marketId}`
+    `https://dex.api.mainnet.metalx.com/dex/v1/trades/daily`
   );
   const { data } = await response.json();
-  return data;  // { last_price, high_24h, low_24h, volume_24h, ... }
+  // data is Array<{ market_id, symbol, volume_bid, volume_ask, open, close, high, low, change_percentage }>
+  return symbol ? data.find((m: any) => m.symbol === symbol) : data;
 }
+
+// Usage
+const xprUsdc = await getDailyStats('XPR_XUSDC');
+console.log(xprUsdc.close, xprUsdc.high, xprUsdc.low, xprUsdc.volume_bid);
 ```
 
 ### Get Trade History
 
+`/trades/recent` takes `symbol`, not `market_id`. Passing `market_id` returns HTTP 400.
+
 ```typescript
-async function getTradeHistory(marketId: string, limit: number = 50) {
+async function getTradeHistory(symbol: string, limit: number = 50) {
   const response = await fetch(
-    `https://dex.api.mainnet.metalx.com/dex/v1/trades/recent?market_id=${marketId}&limit=${limit}`
+    `https://dex.api.mainnet.metalx.com/dex/v1/trades/recent?symbol=${symbol}&limit=${limit}`
   );
   const { data } = await response.json();
   return data;
 }
+
+// Usage
+const trades = await getTradeHistory('XPR_XUSDC', 20);
 ```
 
 ### Get User's Open Orders

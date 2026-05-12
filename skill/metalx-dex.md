@@ -672,9 +672,9 @@ class MetalXService {
     return res.json();
   }
 
-  // Get orderbook depth
-  async getOrderbook(marketId: number) {
-    const res = await fetch(`${this.baseUrl}/dex/v1/orders/depth?market_id=${marketId}`);
+  // Get orderbook depth — takes symbol + step, NOT market_id
+  async getOrderbook(symbol: string, step: number = 0.0001) {
+    const res = await fetch(`${this.baseUrl}/dex/v1/orders/depth?symbol=${symbol}&step=${step}`);
     return res.json();
   }
 
@@ -690,9 +690,9 @@ class MetalXService {
     return res.json();
   }
 
-  // Get recent trades
-  async getRecentTrades(marketId: number) {
-    const res = await fetch(`${this.baseUrl}/dex/v1/trades/recent?market_id=${marketId}`);
+  // Get recent trades — takes symbol, NOT market_id
+  async getRecentTrades(symbol: string) {
+    const res = await fetch(`${this.baseUrl}/dex/v1/trades/recent?symbol=${symbol}`);
     return res.json();
   }
 
