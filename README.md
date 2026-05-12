@@ -29,11 +29,19 @@ cd xpr-network-dev-skill
 
 ## Updating
 
-If you installed via git clone, pull the latest version:
+**Claude Code install (`./install.sh`):** the symlink points at your local checkout, so `git pull` is all you need.
 
 ```bash
 cd xpr-network-dev-skill
 git pull
+```
+
+Your assistant will see the new content on its next conversation. No reinstall.
+
+**Server-side agent (`agent-bootstrap.sh`):** re-run the bootstrap script. It's idempotent — `git pull` on the skill checkout, `npm update` on the xpr-agents packages, no re-provisioning of the keychain.
+
+```bash
+./scripts/agent-bootstrap.sh
 ```
 
 Your agent will use the updated skill automatically on the next conversation. No reinstall needed — the symlink points to the local directory.
@@ -79,25 +87,47 @@ This skill is just structured markdown - it works with any AI coding assistant, 
 
 ### Cursor
 
-**Option A: .cursorrules**
+Modern Cursor uses `.cursor/rules/*.mdc` files; the legacy `.cursorrules` flat file still works but isn't where new projects should land.
+
+**Modern** — drop a project rule pointing at the skill:
 
 ```bash
-# Copy relevant modules into your .cursorrules file
-cat skill/smart-contracts.md >> .cursorrules
+mkdir -p .cursor/rules
+cat > .cursor/rules/xpr-network.mdc <<'EOF'
+---
+description: XPR Network development reference
+globs: ["**/*"]
+alwaysApply: false
+---
+When working on XPR Network code, consult the modules under `skill/`. Start
+at skill/SKILL.md for the routing table; load individual reference docs on
+demand (e.g. skill/defi-trading.md for swap/AMM, skill/metalx-dex.md for
+the order book).
+EOF
 ```
 
-**Option B: Reference in prompts**
+**In-prompt reference** (any Cursor version):
 
 ```
 @skill/smart-contracts.md How do I create a singleton table?
 ```
 
-**Option C: Add as documentation**
-Add the `skill/` folder to your project and Cursor will index it.
+**Indexed** — add the `skill/` folder to your workspace and Cursor will index it for retrieval-augmented answers without an explicit rule.
 
-### GitHub Copilot / Other Tools
+### GitHub Copilot
 
-Copy relevant module content into your prompt context or project documentation. The knowledge is tool-agnostic.
+Drop a `.github/copilot-instructions.md` pointing Copilot at the skill, then reference specific modules in commit-message and PR-description prompts:
+
+```bash
+mkdir -p .github && cat > .github/copilot-instructions.md <<'EOF'
+This project targets XPR Network. Reference docs are in `skill/`. Start at
+skill/SKILL.md (routing table); load `skill/<topic>.md` on demand.
+EOF
+```
+
+### Other AI tools
+
+The skill is plain markdown — paste relevant module content into any tool's context window, or point its file-indexing feature at the `skill/` folder. Knowledge is tool-agnostic.
 
 ### OpenClaw / Pinata Agents
 
@@ -274,7 +304,19 @@ Contributions are welcome! Please:
 - **Additional code examples** — kept ABI-current; include the curl/RPC call that verified the example
 - Translations
 
-Run `./scripts/validate-skill.sh` before opening a PR to catch broken links and obvious skill-layout issues.
+Run `./scripts/validate-skill.sh` before opening a PR. It checks:
+
+1. `SKILL.md` YAML frontmatter present
+2. npm packages still resolve (`@proton/cli`, `@proton/js`, `@proton/web-sdk`, `proton-tsc`, `@proton/vert`)
+3. Referenced mainnet contract accounts still exist (`eosio.token`, `dex`, `atomicassets`, etc.)
+4. Key URLs return HTTP 200 (docs, explorer, RPC endpoints, MetalX API)
+5. No leaked private keys (PVT_K1_ or legacy WIF format)
+6. No personal account references
+7. No active links to retired explorers (`protonscan.io`, `proton.bloks.io`)
+8. MetalX endpoints use the correct `/dex/v1/` prefix
+9. Inventory of skill files with line counts (for manual review)
+
+If you're touching a reference module, also include the curl / RPC call you used to verify the change in the PR description — the skill prioritizes verified-against-mainnet over pattern-matched-against-training-data.
 
 ## Resources
 
