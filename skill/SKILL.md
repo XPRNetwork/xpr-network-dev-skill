@@ -62,7 +62,7 @@ Load specialized modules based on your task:
 | `smart-contracts.md` | Building contracts | Tables, actions, auth, build/deploy |
 | `cli-reference.md` | Using CLI tools | Network, keys, deploy, queries, transfers |
 | `web-sdk.md` | Building dApps | Wallet connect, transactions, sessions, transfers |
-| `backend-patterns.md` | Server-side dev | Programmatic signing, bots, security |
+| `backend-patterns.md` | Server-side dev | proton CLI keychain signing (v0.3.0+), bots, key isolation |
 | `rpc-queries.md` | Reading chain data | RPC, Hyperion API, Light API, pagination, token balances |
 | `testing-debugging.md` | Testing contracts | Unit tests, testnet, debugging, logs |
 | `accounts-permissions.md` | Account management | Create accounts, permissions, multisig |

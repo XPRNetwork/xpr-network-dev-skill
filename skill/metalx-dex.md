@@ -428,20 +428,23 @@ Withdraws all funds from DEX back to user's wallet.
 ### JavaScript: Submit Order
 
 ```javascript
-const { JsonRpc, Api, JsSignatureProvider } = require('@proton/js');
+// Recommended: route signing through the proton CLI keychain (key never in process).
+// One-time setup outside this script: `proton key:add` to load your key.
+// See backend-patterns.md "Security: Key Isolation" for context.
+const { createCliSession } = require('@xpr-agents/openclaw');
 const fetch = require('node-fetch');
 
-const ENDPOINTS = ['https://rpc.api.mainnet.metalx.com'];
 const SUBMIT_URL = 'https://dex.api.mainnet.metalx.com/dex/v1/orders/submit';
-const PRIVATE_KEY = 'YOUR_PRIVATE_KEY';
+const USERNAME = 'youraccount';
 
-const rpc = new JsonRpc(ENDPOINTS);
-const api = new Api({
-  rpc,
-  signatureProvider: new JsSignatureProvider([PRIVATE_KEY])
+const { rpc, session } = createCliSession({
+  account: USERNAME,
+  permission: 'active',
+  rpcEndpoint: 'https://rpc.api.mainnet.metalx.com',
 });
 
-const USERNAME = 'youraccount';
+// `session.link.transact(...)` shells out to `proton transaction:push`.
+
 const authorization = [{ actor: USERNAME, permission: 'active' }];
 
 // Order parameters
@@ -494,7 +497,7 @@ const actions = [
 ];
 
 async function submitOrder() {
-  const { serializedTransaction, signatures } = await api.transact(
+  const { serializedTransaction, signatures } = await session.link.transact(
     { actions },
     { blocksBehind: 300, expireSeconds: 3000, broadcast: false }
   );

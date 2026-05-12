@@ -517,7 +517,8 @@ class SubscriptionBot {
       for (const sub of rows) {
         if (!sub.active) continue;
 
-        await api.transact({
+        // Sign via proton CLI keychain — see backend-patterns.md for createCliSession setup
+        await session.link.transact({
           actions: [{
             account: 'subsmanager',
             name: 'charge',

@@ -510,7 +510,8 @@ async function airdrop(
       }
     }));
 
-    await api.transact({ actions }, { blocksBehind: 3, expireSeconds: 30 });
+    // Sign via proton CLI keychain — see backend-patterns.md for createCliSession setup
+    await session.link.transact({ actions }, { blocksBehind: 3, expireSeconds: 30 });
 
     // Rate limit
     await new Promise(r => setTimeout(r, 500));
