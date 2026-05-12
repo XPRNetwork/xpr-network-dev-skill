@@ -546,6 +546,5 @@ cleos system listproducers
 
 ### Support Channels
 
-- **Telegram:** XPR Network Validators
-- **Discord:** #validators channel
+- **Telegram:** [XPR Network Validators](https://t.me/XPRNetwork/935112)
 - **Help Desk:** https://help.xprnetwork.org
