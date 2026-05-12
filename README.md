@@ -22,6 +22,8 @@ cd xpr-network-dev-skill
 ./install.sh
 ```
 
+> **Deploying a server-side agent?** This README covers installing the skill into Claude Code on your own machine. If you're standing up an autonomous XPR Network agent on Pinata or another OpenClaw runtime, see [agent-bootstrap.md](./agent-bootstrap.md) instead.
+
 ## Updating
 
 If you installed via git clone, pull the latest version:
