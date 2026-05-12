@@ -87,6 +87,8 @@ All reads use standard `get_table_rows`. Fallback RPCs: `https://proton.greymass
 
 ### `alcor` (order book)
 
+> **Naming gotcha:** The on-chain `markets` table uses **FX-style naming** — for market id 2 (XUSDT/XPR), the `base_token` is XUSDT and the `quote_token` is XPR. The Alcor REST API's `ticker_id` uses the **opposite, standard crypto-DEX naming** — the same market's ticker is `xusdt-xtokens_xpr-eosio.token` where `base_currency = xusdt-xtokens` and `target_currency = xpr-eosio.token`. Same direction, just different field names. Use the API's `market_id` field to cross-reference.
+
 | Table | Scope | Description |
 |-------|-------|-------------|
 | `markets` | `alcor` | `id`, `base_token {sym, contract}`, `quote_token {sym, contract}`, `min_buy`, `min_sell`, `frozen`, `fee` |
