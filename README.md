@@ -1,6 +1,11 @@
-# XPR Network Developer Skill for Claude Code
+# XPR Network Developer Skill
 
-A comprehensive skill package that enhances Claude's capabilities for XPR Network blockchain development. This skill provides Claude with deep knowledge of smart contract development, CLI tools, frontend integration, and best practices specific to the XPR Network ecosystem.
+A comprehensive, ABI-verified knowledge layer for XPR Network development. Use it two ways:
+
+- **In Claude Code** (and any AI assistant that reads markdown) — install once, the assistant loads the right module on demand when you ask about smart contracts, DEX trading, NFTs, lending, agents, or infrastructure. See [Installation](#installation).
+- **As the brain for a server-side autonomous agent** — paired with the [`@xpr-agents/openclaw`](https://github.com/XPRNetwork/xpr-agents) plugin, this skill gives a Pinata-hosted (or self-hosted) OpenClaw agent the knowledge to use its tools correctly: which memo means "deposit" vs "swap" vs "stranded funds", what the real swap fees are, when `liquidityadd` will silently fail. See [`agent-bootstrap.md`](./agent-bootstrap.md).
+
+Every fact in this skill is verified against live mainnet ABIs, contract source, and Hyperion traces — not pattern-matched from training data.
 
 ## What is XPR Network?
 
@@ -26,16 +31,32 @@ cd xpr-network-dev-skill
 
 ## Updating
 
-If you installed via git clone, pull the latest version:
+**Claude Code install (`./install.sh`):** the symlink points at your local checkout, so `git pull` is all you need.
 
 ```bash
 cd xpr-network-dev-skill
 git pull
 ```
 
+Your assistant will see the new content on its next conversation. No reinstall.
+
+**Server-side agent (`agent-bootstrap.sh`):** re-run the bootstrap script. It's idempotent — `git pull` on the skill checkout, `npm update` on the xpr-agents packages, no re-provisioning of the keychain.
+
+```bash
+./scripts/agent-bootstrap.sh
+```
+
 Your agent will use the updated skill automatically on the next conversation. No reinstall needed — the symlink points to the local directory.
 
-> **v2.0.0 (March 2026):** Major accuracy audit — 40+ fixes across 13 files. All contract actions, params, and tables verified against live mainnet ABIs. Critical fixes for DEX deposits, LOAN protocol, oracle indices, and more. See [PR #10](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/10) for details.
+> **v2.2.0 (May 2026):** Multi-PR accuracy + safety pass on top of v2.0.0:
+>
+> - **Backend signing** — replaced the legacy `JsSignatureProvider` pattern with the proton CLI keychain (`@xpr-agents/openclaw` `createCliSession`). Keys never enter agent process memory. See [PR #15](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/15).
+> - **Alcor DEX** — full reference for the order book, v3 AMM, and OTC surfaces. See [PR #14](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/14).
+> - **MetalX** — empty-memo deposit warning, Python `proton action` subprocess pattern, `proton.swaps` cross-references. See PRs [#16](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/16), [#17](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/17), [#18](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/18).
+> - **proton.swaps accuracy** — corrected fee math (0.30% total, not 0.20%), liquidityadd deposit prerequisite + memo warning, removed fictional `addliq:` memo path. See [PR #19](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/19).
+> - **Server-side agent deployment** — [`agent-bootstrap.md`](./agent-bootstrap.md) + `scripts/agent-bootstrap.sh` for deploying autonomous XPR agents on Pinata or other OpenClaw runtimes. See [PR #20](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/20).
+>
+> v2.0.0 (March 2026) shipped the original 40+ fix accuracy audit ([PR #10](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/10)).
 
 ### Method 1: Manual symlink (personal skill)
 
@@ -68,25 +89,51 @@ This skill is just structured markdown - it works with any AI coding assistant, 
 
 ### Cursor
 
-**Option A: .cursorrules**
+Modern Cursor uses `.cursor/rules/*.mdc` files; the legacy `.cursorrules` flat file still works but isn't where new projects should land.
+
+**Modern** — drop a project rule pointing at the skill:
 
 ```bash
-# Copy relevant modules into your .cursorrules file
-cat skill/smart-contracts.md >> .cursorrules
+mkdir -p .cursor/rules
+cat > .cursor/rules/xpr-network.mdc <<'EOF'
+---
+description: XPR Network development reference
+globs: ["**/*"]
+alwaysApply: false
+---
+When working on XPR Network code, consult the modules under `skill/`. Start
+at skill/SKILL.md for the routing table; load individual reference docs on
+demand (e.g. skill/defi-trading.md for swap/AMM, skill/metalx-dex.md for
+the order book).
+EOF
 ```
 
-**Option B: Reference in prompts**
+**In-prompt reference** (any Cursor version):
 
 ```
 @skill/smart-contracts.md How do I create a singleton table?
 ```
 
-**Option C: Add as documentation**
-Add the `skill/` folder to your project and Cursor will index it.
+**Indexed** — add the `skill/` folder to your workspace and Cursor will index it for retrieval-augmented answers without an explicit rule.
 
-### GitHub Copilot / Other Tools
+### GitHub Copilot
 
-Copy relevant module content into your prompt context or project documentation. The knowledge is tool-agnostic.
+Drop a `.github/copilot-instructions.md` pointing Copilot at the skill, then reference specific modules in commit-message and PR-description prompts:
+
+```bash
+mkdir -p .github && cat > .github/copilot-instructions.md <<'EOF'
+This project targets XPR Network. Reference docs are in `skill/`. Start at
+skill/SKILL.md (routing table); load `skill/<topic>.md` on demand.
+EOF
+```
+
+### Other AI tools
+
+The skill is plain markdown — paste relevant module content into any tool's context window, or point its file-indexing feature at the `skill/` folder. Knowledge is tool-agnostic.
+
+### OpenClaw / Pinata Agents
+
+For autonomous server-side agents (Pinata, self-hosted OpenClaw, future hosts), this skill is the **knowledge layer** that pairs with [`@xpr-agents/openclaw`](https://github.com/XPRNetwork/xpr-agents) as the **capabilities layer**. The bootstrap procedure — install the openclaw plugin, provision the proton CLI keychain, clone this skill into the agent workspace, smoke test — is documented in [`agent-bootstrap.md`](./agent-bootstrap.md). One-command provisioning script in [`scripts/agent-bootstrap.sh`](./scripts/agent-bootstrap.sh).
 
 ### Direct Reference
 
@@ -124,11 +171,12 @@ For any AI tool, you can paste sections directly:
 
 | Module                                               | Description                                     |
 | ---------------------------------------------------- | ----------------------------------------------- |
-| [metalx-dex.md](skill/metalx-dex.md)                 | Complete MetalX DEX API reference               |
-| [alcor-dex.md](skill/alcor-dex.md)                   | Alcor order book + v3 AMM + OTC reference       |
-| [defi-trading.md](skill/defi-trading.md)             | Trading bots, perps architecture, DeFi patterns |
-| [loan-protocol.md](skill/loan-protocol.md)           | LOAN lending protocol integration               |
-| [oracles-randomness.md](skill/oracles-randomness.md) | Price oracles, verifiable random numbers        |
+| [metalx-dex.md](skill/metalx-dex.md)                 | Complete MetalX DEX API reference                        |
+| [alcor-dex.md](skill/alcor-dex.md)                   | Alcor order book + v3 AMM + OTC reference                |
+| [simpledex.md](skill/simpledex.md)                   | SimpleDEX token launch + bonding curves + AMM graduation |
+| [defi-trading.md](skill/defi-trading.md)             | Trading bots, perps architecture, DeFi patterns          |
+| [loan-protocol.md](skill/loan-protocol.md)           | LOAN lending protocol integration                        |
+| [oracles-randomness.md](skill/oracles-randomness.md) | Price oracles, verifiable random numbers                 |
 
 ### Integration Patterns
 
@@ -192,10 +240,12 @@ Claude will load specialized modules on demand based on your queries.
 
 ### Backend Development
 
-- Server-side transaction signing
+- **proton CLI keychain pattern** — keys never enter agent process memory; signing shells out to `proton transaction:push`
+- `@xpr-agents/openclaw` `createCliSession` as the keychain-backed `ProtonSession`
 - Automated bots and scheduled tasks
-- Security best practices for key management
+- `@xpr-agents/sdk` registries (Agent, Escrow, Validation, Feedback) for read + write
 - Hyperion and Light API integration
+- Legacy `JsSignatureProvider` pattern (documented as the discouraged fallback, not the default)
 
 ### Token & Identity
 
@@ -213,14 +263,27 @@ Claude will load specialized modules on demand based on your queries.
 
 ### DeFi and Trading
 
-- MetalX DEX integration (order book, trades)
+- **MetalX** order-book DEX (the `dex` contract) — orders, deposits, lifecycle
+- **MetalX Swap** AMM (the `proton.swaps` contract) — verified 0.30% total swap fee (0.20% LP + 0.10% protocol), three-step `depositprep` → empty-memo transfer → `liquidityadd` flow
+- **Alcor DEX** — order book + v3 AMM + OTC, base/quote inversion gotcha
+- **SimpleDEX** — token launch with bonding curves + AMM graduation
 - Trading bot patterns (grid bot, market maker)
 - Perpetual futures architecture and building blocks
-- LOAN lending protocol (supply, borrow, liquidations)
+- **LOAN protocol** — supply, borrow, liquidations
+
+### Server-Side Agents
+
+- Deploying an autonomous XPR Network agent on Pinata (hosted OpenClaw) or self-hosted runtimes — see [`agent-bootstrap.md`](./agent-bootstrap.md)
+- Capabilities layer: 55 MCP tools across identity, reputation, validation, escrow, A2A via `@xpr-agents/openclaw`
+- Knowledge layer: this skill, loaded into the agent workspace as on-demand reference docs
+- Idempotent provisioning script ([`scripts/agent-bootstrap.sh`](./scripts/agent-bootstrap.sh)) with PATH fixup, key-format validation, read-only smoke test
+- Non-interactive `proton key:add` for managed consoles (no TTY)
 
 ### Safety & Troubleshooting
 
 - **CRITICAL**: Never modify existing table structures with data
+- **CRITICAL**: Token transfers to the `dex` contract MUST use empty memo (otherwise funds are stranded with no recovery)
+- **CRITICAL**: `liquidityadd` on `proton.swaps` requires `depositprep` + empty-memo transfers first — calling it cold fails with `insufficient balance`
 - Pre-deployment checklist
 - Recovery procedures
 - Multi-contract deployment safety
@@ -237,17 +300,41 @@ Contributions are welcome! Please:
 
 ### Areas for Contribution
 
-- Additional code examples
-- New patterns from production contracts
-- Corrections and clarifications
+- **Verified corrections** — when you hit a doc that doesn't match on-chain reality, open a PR with the curl/source citation; this skill prioritizes verified-against-mainnet over pattern-matched-against-training-data
+- **New patterns from production** — agent operator patterns, novel contract integrations, real failure modes you've debugged
+- **Coverage gaps** — token contract + precision registry, market-id lists for the DEXes, additional safety callouts
+- **Additional code examples** — kept ABI-current; include the curl/RPC call that verified the example
 - Translations
 
+Run `./scripts/validate-skill.sh` before opening a PR. It checks:
+
+1. `SKILL.md` YAML frontmatter present
+2. npm packages still resolve (`@proton/cli`, `@proton/js`, `@proton/web-sdk`, `proton-tsc`, `@proton/vert`)
+3. Referenced mainnet contract accounts still exist (`eosio.token`, `dex`, `atomicassets`, etc.)
+4. Key URLs return HTTP 200 (docs, explorer, RPC endpoints, MetalX API)
+5. No leaked private keys (PVT_K1_ or legacy WIF format)
+6. No personal account references
+7. No active links to retired explorers (`protonscan.io`, `proton.bloks.io`)
+8. MetalX endpoints use the correct `/dex/v1/` prefix
+9. Inventory of skill files with line counts (for manual review)
+
+If you're touching a reference module, also include the curl / RPC call you used to verify the change in the PR description — the skill prioritizes verified-against-mainnet over pattern-matched-against-training-data.
+
 ## Resources
+
+**XPR Network**
 
 - **Official Docs**: https://docs.xprnetwork.org
 - **GitHub**: https://github.com/XPRNetwork
 - **Block Explorer**: https://explorer.xprnetwork.org
 - **Discord**: https://discord.gg/xprnetwork
+- **Governance DAO**: https://gov.xprnetwork.org — token-listing votes happen at [community #7](https://gov.xprnetwork.org/communities/7)
+
+**Agent infrastructure**
+
+- **xpr-agents repo**: https://github.com/XPRNetwork/xpr-agents — `@xpr-agents/openclaw` plugin, `@xpr-agents/sdk`, agent-runner starter kit
+- **Agent registry (live)**: https://agents.protonnz.com
+- **Pinata Agents** (hosted OpenClaw): https://docs.pinata.cloud/agents/overview.md
 
 ## License
 
