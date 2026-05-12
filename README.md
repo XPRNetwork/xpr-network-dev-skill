@@ -33,7 +33,15 @@ git pull
 
 Your agent will use the updated skill automatically on the next conversation. No reinstall needed — the symlink points to the local directory.
 
-> **v2.0.0 (March 2026):** Major accuracy audit — 40+ fixes across 13 files. All contract actions, params, and tables verified against live mainnet ABIs. Critical fixes for DEX deposits, LOAN protocol, oracle indices, and more. See [PR #10](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/10) for details.
+> **v2.2.0 (May 2026):** Multi-PR accuracy + safety pass on top of v2.0.0:
+>
+> - **Backend signing** — replaced the legacy `JsSignatureProvider` pattern with the proton CLI keychain (`@xpr-agents/openclaw` `createCliSession`). Keys never enter agent process memory. See [PR #15](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/15).
+> - **Alcor DEX** — full reference for the order book, v3 AMM, and OTC surfaces. See [PR #14](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/14).
+> - **MetalX** — empty-memo deposit warning, Python `proton action` subprocess pattern, `proton.swaps` cross-references. See PRs [#16](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/16), [#17](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/17), [#18](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/18).
+> - **proton.swaps accuracy** — corrected fee math (0.30% total, not 0.20%), liquidityadd deposit prerequisite + memo warning, removed fictional `addliq:` memo path. See [PR #19](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/19).
+> - **Server-side agent deployment** — [`agent-bootstrap.md`](./agent-bootstrap.md) + `scripts/agent-bootstrap.sh` for deploying autonomous XPR agents on Pinata or other OpenClaw runtimes. See [PR #20](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/20).
+>
+> v2.0.0 (March 2026) shipped the original 40+ fix accuracy audit ([PR #10](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/10)).
 
 ### Method 1: Manual symlink (personal skill)
 
@@ -122,11 +130,12 @@ For any AI tool, you can paste sections directly:
 
 | Module                                               | Description                                     |
 | ---------------------------------------------------- | ----------------------------------------------- |
-| [metalx-dex.md](skill/metalx-dex.md)                 | Complete MetalX DEX API reference               |
-| [alcor-dex.md](skill/alcor-dex.md)                   | Alcor order book + v3 AMM + OTC reference       |
-| [defi-trading.md](skill/defi-trading.md)             | Trading bots, perps architecture, DeFi patterns |
-| [loan-protocol.md](skill/loan-protocol.md)           | LOAN lending protocol integration               |
-| [oracles-randomness.md](skill/oracles-randomness.md) | Price oracles, verifiable random numbers        |
+| [metalx-dex.md](skill/metalx-dex.md)                 | Complete MetalX DEX API reference                        |
+| [alcor-dex.md](skill/alcor-dex.md)                   | Alcor order book + v3 AMM + OTC reference                |
+| [simpledex.md](skill/simpledex.md)                   | SimpleDEX token launch + bonding curves + AMM graduation |
+| [defi-trading.md](skill/defi-trading.md)             | Trading bots, perps architecture, DeFi patterns          |
+| [loan-protocol.md](skill/loan-protocol.md)           | LOAN lending protocol integration                        |
+| [oracles-randomness.md](skill/oracles-randomness.md) | Price oracles, verifiable random numbers                 |
 
 ### Integration Patterns
 
