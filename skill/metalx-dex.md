@@ -548,39 +548,48 @@ async function getOrderLifecycle(ordinalId) {
 
 ### Python: Submit Order
 
+Python signs and broadcasts via the **proton CLI keychain** through `subprocess` — the private key never enters the Python process. Same key-isolation guarantee as the JS path above; see `backend-patterns.md` "Security: Key Isolation" for the rationale.
+
+One-time setup outside this script: `proton key:add` to load your key into the CLI keychain. The Python script needs no `XPR_PRIVATE_KEY`, no `.env`, no `pyeoskit`.
+
 ```python
 import json
-import requests
-from pyeoskit import eosapi, wallet
+import subprocess
 from math import pow
 
-wallet.import_key('mywallet', 'YOUR_PRIVATE_KEY')
-eosapi.set_node('https://rpc.api.mainnet.metalx.com')
-
 USERNAME = 'youraccount'
-SUBMIT_URL = 'https://dex.api.mainnet.metalx.com/dex/v1/orders/submit'
 
 # Order parameters
 MARKET_ID = 1
-ORDER_SIDE = 2  # Sell
-ORDER_TYPE = 1  # Limit
-FILL_TYPE = 0   # GTC
+ORDER_SIDE = 2   # Sell
+ORDER_TYPE = 1   # Limit
+FILL_TYPE = 0    # GTC
 PRICE = 0.0021
 AMOUNT = 700
 
 BID_TOKEN = {'contract': 'eosio.token', 'symbol': 'XPR', 'precision': 4}
 ASK_TOKEN = {'contract': 'xmd.token', 'symbol': 'XMD', 'precision': 6}
 
-permission = {USERNAME: 'active'}
 
-args1 = {
+def proton_action(contract: str, name: str, data: dict) -> str:
+    """Run one signed action via the proton CLI. Private key never enters Python."""
+    result = subprocess.run(
+        ['proton', 'action', contract, name, json.dumps(data), USERNAME],
+        check=True, capture_output=True, text=True,
+    )
+    return result.stdout
+
+
+# 1) Deposit XPR to the DEX (empty memo is mandatory — see warning above)
+proton_action(BID_TOKEN['contract'], 'transfer', {
     'from': USERNAME,
     'to': 'dex',
     'quantity': f'{AMOUNT:.{BID_TOKEN["precision"]}f} {BID_TOKEN["symbol"]}',
-    'memo': ''
-}
+    'memo': '',
+})
 
-args2 = {
+# 2) Place the order
+proton_action('dex', 'placeorder', {
     'market_id': MARKET_ID,
     'account': USERNAME,
     'order_type': ORDER_TYPE,
@@ -591,30 +600,16 @@ args2 = {
     'referrer': '',
     'quantity': int(AMOUNT * pow(10, BID_TOKEN['precision'])),
     'price': int(PRICE * pow(10, ASK_TOKEN['precision'])),
-    'trigger_price': 0
-}
-
-args3 = {'q_size': 20, 'show_error_msg': 0}
-
-a1 = [BID_TOKEN['contract'], 'transfer', args1, permission]
-a2 = ['dex', 'placeorder', args2, permission]
-a3 = ['dex', 'process', args3, permission]
-
-# Generate and submit transaction
-info = eosapi.get_info()
-final_tx = eosapi.generate_packed_transaction(
-    [a1, a2, a3], 60,
-    info['last_irreversible_block_id'],
-    info['chain_id']
-)
-mtx = json.loads(final_tx)
-
-response = requests.post(SUBMIT_URL, json={
-    'serialized_tx_hex': mtx['packed_trx'],
-    'signatures': mtx['signatures']
+    'trigger_price': 0,
 })
-print(response.json())
+
+# 3) Tick the order queue
+proton_action('dex', 'process', {'q_size': 25, 'show_error_msg': 0})
 ```
+
+> **Atomicity trade-off.** The original Python example bundled all three actions into a single atomic EOSIO transaction (via `pyeoskit.generate_packed_transaction`). This rewrite runs each action as its own `proton action` call to keep the private key in the CLI keychain. If step 2 or 3 fails, step 1's deposit is recoverable via `proton action dex withdrawall '{"account":"youraccount"}' youraccount` — the funds aren't lost, they sit in the user's DEX deposit balance until withdrawn or used.
+>
+> If you specifically need atomic multi-action signing or MetalX's `/orders/submit` endpoint (e.g. for the API's `ordinal_order_id` in the response), use the **JavaScript path above** — `createCliSession` handles the atomic case. `proton transaction` at the CLI level would be the obvious Python equivalent, but `@proton/cli@0.1.98`'s `transaction` command is currently broken (missing `JSON.parse` on its argument; tracked upstream).
 
 ### Python: Get Order Lifecycle
 
@@ -682,23 +677,26 @@ class MetalXService {
 
 ## Libraries & Dependencies
 
+Both paths assume the proton CLI is installed system-wide and your account's key has been added to its keychain:
+
+```bash
+npm install -g @proton/cli
+proton key:add   # one-time, prompts for the private key, stores it encrypted in the OS keychain
+```
+
 ### JavaScript
 ```bash
-npm install @proton/js node-fetch
+npm install @xpr-agents/openclaw node-fetch
 ```
+
+`@xpr-agents/openclaw` provides `createCliSession`, which routes signing through `proton transaction:push` so the private key never enters the Node process. See `backend-patterns.md` "Security: Key Isolation".
 
 ### Python
 ```bash
-pip install pyeoskit requests
+pip install requests
 ```
 
-**macOS setup for pyeoskit:**
-```bash
-brew install go cython
-python3 -m pip install cmake
-xcode-select --install
-python3 -m pip install pyeoskit
-```
+That's the entire Python dependency footprint — no `pyeoskit`, no key library, no build toolchain. Signing happens in `proton` via `subprocess`; Python only constructs the action JSON and reads the result.
 
 ---
 
