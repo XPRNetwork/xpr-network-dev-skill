@@ -448,40 +448,13 @@ unwrap(account: Name, quantity: Asset, destinationAddress: string): void {
 
 ---
 
-## List Token on DEX
+## Listing a Token on MetalX
 
-### Add to MetalX
+**Listing isn't self-serve.** Pool creation on `proton.swaps` (the contract behind MetalX's Swap UI) is gated — there's no action a token issuer can call to spin up a pool on their own. New tokens are admitted through the XPR Network governance DAO:
 
-1. Ensure token contract is deployed
-2. Create liquidity pool:
+- **Governance community:** <https://gov.xprnetwork.org/communities/7>
 
-```typescript
-// Add liquidity to XPR/MYTKN pool
-const actions = [
-  {
-    account: 'eosio.token',
-    name: 'transfer',
-    authorization: [{ actor: account, permission: 'active' }],
-    data: {
-      from: account,
-      to: 'proton.swaps',
-      quantity: '10000.0000 XPR',
-      memo: 'addliq:MYTKN'
-    }
-  },
-  {
-    account: 'mytokencontract',
-    name: 'transfer',
-    authorization: [{ actor: account, permission: 'active' }],
-    data: {
-      from: account,
-      to: 'proton.swaps',
-      quantity: '1000000.0000 MYTKN',
-      memo: 'addliq:XPR'
-    }
-  }
-];
-```
+Submit your listing request there; voters decide. Once a pool exists for your token, the technical seed-liquidity flow (`depositprep` → empty-memo transfers → `liquidityadd`) is documented in `defi-trading.md` → *Proton Swaps (AMM Liquidity Pools)* → *Add Liquidity*. This file stays focused on what a token issuer can do unilaterally (deploy, issue, airdrop).
 
 ---
 
