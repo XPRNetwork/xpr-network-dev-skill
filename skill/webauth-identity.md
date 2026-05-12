@@ -177,8 +177,8 @@ export function Avatar({ account, avatar, size = 40 }: AvatarProps) {
   const [src, setSrc] = useState(avatar);
   const [error, setError] = useState(false);
 
-  // Fallback to generated avatar
-  const fallback = `https://avatars.dicebear.com/api/identicon/${account}.svg`;
+  // Fallback to generated avatar (Dicebear retired the /api/ URL scheme — use the current HTTP API)
+  const fallback = `https://api.dicebear.com/9.x/identicon/svg?seed=${account}`;
 
   return (
     <img

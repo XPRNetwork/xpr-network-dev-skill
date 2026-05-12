@@ -46,8 +46,6 @@ Your assistant will see the new content on its next conversation. No reinstall.
 ./scripts/agent-bootstrap.sh
 ```
 
-Your agent will use the updated skill automatically on the next conversation. No reinstall needed — the symlink points to the local directory.
-
 > **v2.2.0 (May 2026):** Multi-PR accuracy + safety pass on top of v2.0.0:
 >
 > - **Backend signing** — replaced the legacy `JsSignatureProvider` pattern with the proton CLI keychain (`@xpr-agents/openclaw` `createCliSession`). Keys never enter agent process memory. See [PR #15](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/15).
