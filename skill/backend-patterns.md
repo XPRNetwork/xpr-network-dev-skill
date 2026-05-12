@@ -101,15 +101,16 @@ The `@xpr-agents/openclaw` v0.3.0+ agent runner will **refuse to start** if `XPR
 
 ### Basic Transaction
 
+These helpers take a `session` argument so they work with whatever signing path you set up in **Basic Configuration** — `createCliSession`'s `session` (recommended) drops in here. `blocksBehind` / `expireSeconds` are accepted by the CLI-backed `transact()` but ignored under the hood; `proton transaction:push` manages tx headers internally.
+
 ```typescript
-async function sendTransaction(actions: any[]) {
+import type { ProtonSession } from '@xpr-agents/sdk';
+
+async function sendTransaction(session: ProtonSession, actions: any[]) {
   try {
-    const result = await api.transact(
+    const result = await session.link.transact(
       { actions },
-      {
-        blocksBehind: 3,
-        expireSeconds: 30
-      }
+      { blocksBehind: 3, expireSeconds: 30 }
     );
     return { success: true, transaction_id: result.transaction_id };
   } catch (error: any) {
@@ -122,6 +123,7 @@ async function sendTransaction(actions: any[]) {
 
 ```typescript
 async function transferTokens(
+  session: ProtonSession,
   from: string,
   to: string,
   quantity: string,
@@ -134,17 +136,18 @@ async function transferTokens(
     data: { from, to, quantity, memo }
   }];
 
-  return sendTransaction(actions);
+  return sendTransaction(session, actions);
 }
 
-// Usage
-await transferTokens('myaccount', 'recipient', '10.0000 XPR', 'Payment');
+// Usage — `session` comes from createCliSession() in Basic Configuration
+await transferTokens(session, 'myaccount', 'recipient', '10.0000 XPR', 'Payment');
 ```
 
 ### Multiple Actions in One Transaction
 
 ```typescript
 async function batchTransfer(
+  session: ProtonSession,
   from: string,
   transfers: Array<{ to: string; quantity: string; memo: string }>
 ) {
@@ -160,7 +163,7 @@ async function batchTransfer(
     }
   }));
 
-  return sendTransaction(actions);
+  return sendTransaction(session, actions);
 }
 ```
 
@@ -679,9 +682,12 @@ async function rateLimitedTransfer(to: string, amount: string) {
 ### Robust Error Handling
 
 ```typescript
-async function safeTransact(actions: any[]): Promise<TransactionResult> {
+async function safeTransact(
+  session: ProtonSession,
+  actions: any[]
+): Promise<TransactionResult> {
   try {
-    const result = await api.transact(
+    const result = await session.link.transact(
       { actions },
       { blocksBehind: 3, expireSeconds: 30 }
     );
