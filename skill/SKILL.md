@@ -10,6 +10,8 @@ repository: https://github.com/XPRNetwork/xpr-network-dev-skill
 
 This skill provides comprehensive knowledge for developing on XPR Network, a fast, gas-free blockchain with WebAuthn wallet support.
 
+> **Policy for AI agents (applies skill-wide):** All chain **writes** documented in this skill use the **`proton` CLI keychain** for signing — private keys stay in the CLI's encrypted on-disk keystore, never in the agent's process memory or context. **Reads** use direct RPC (`get_table_rows`, `get_account`, etc.) and the relevant project's REST API. Do **not** introduce signing patterns that pass raw private keys to the agent (e.g. `new JsSignatureProvider(['PRIV_KEY'])`, `wallet.import_key('...')`, `XPR_PRIVATE_KEY` in environment). See [`backend-patterns.md` → Security: Key Isolation](backend-patterns.md#security-key-isolation) and [`../agent-bootstrap.md`](../agent-bootstrap.md) for the canonical signing path.
+
 > **IMPORTANT DISCLAIMER: AI-Generated Smart Contract Code**
 >
 > Smart contracts handle real assets and are immutable once deployed. AI-generated code, including code produced with this skill, should **always be reviewed by an experienced developer** before deployment to mainnet.

@@ -56,7 +56,7 @@ After this, the key lives in the CLI's encrypted keychain. Your `.env` does NOT 
 ### Dependencies
 
 ```bash
-npm install @xpr-agents/openclaw @proton/js
+npm install @xpr-agents/openclaw @xpr-agents/sdk @proton/js
 ```
 
 ### Basic Configuration

@@ -4,7 +4,7 @@ Alcor is a multi-chain (WAX, EOS, Telos, XPR Network) DEX that ships **both** an
 
 > **What's NOT on XPR Network:** Alcor's UI advertises NFT marketplace (`alcornftswap`), liquid staking (`liquid.alcor`), and the LSW token (`lsw.alcor`). These accounts **do not exist on XPR Network** — they only run on Alcor's WAX/EOS instances. Do not build against them here.
 
-> **Policy for AI agents:** All chain **writes** in this doc use `proton` CLI — private keys stay in the OS keyring, never in the agent's context. **Reads** use direct RPC (`get_table_rows`) and the Alcor REST API. Do not introduce signing patterns that pass raw keys to the agent (e.g. `new JsSignatureProvider(['PRIV_KEY'])`, `wallet.import_key('...')`).
+> **AI-agent policy** for chain writes (proton CLI keychain, never raw keys) is now stated skill-wide in [`SKILL.md`](./SKILL.md) and applies to every reference doc, including this one. See it once at session start; it's not repeated per file.
 
 ## Quick Reference
 
@@ -166,8 +166,10 @@ Single rule that covers both directions:
 
 The implied unit price is `quantity_transferred : amount_in_memo`. The order goes to the buy or sell side depending on which token of the pair you transferred.
 
+> **Decimal precision matters.** XPR is **4-decimal** (`7977.4902 XPR`), XUSDC / XUSDT / XMD are **6-decimal**, XBTC / XETH are **8-decimal**. The quantity string must match the token's on-chain `eosio.token::stat` precision exactly or the transfer is rejected as an asset-format error. Don't normalize precision in your client. See [`resources.md → Token Contracts`](./resources.md#token-contracts) for the full list.
+
 ```bash
-# BUY TDBN with XPR — transfer XPR, ask for TDBN in memo
+# BUY TDBN with XPR — transfer XPR (4-decimal), ask for TDBN in memo
 proton action eosio.token transfer \
   '{"from":"trader","to":"alcor","quantity":"7977.4902 XPR","memo":"7109.9992 TDBN@tokencreate"}' \
   trader
@@ -227,7 +229,7 @@ curl "https://proton.alcor.exchange/api/v2/swapRouter/getRoute\
 &receiver=trader"
 ```
 
-Response (verified live):
+Response (illustrative — pool IDs rotate; **do not hard-code**):
 
 ```json
 {
@@ -241,6 +243,8 @@ Response (verified live):
   "executionPrice": { "numerator": "27867", "denominator": "100000" }
 }
 ```
+
+> **Pool IDs rotate.** Alcor adds, retires, and migrates pools over time. The `route` array, `executionPrice`, and any pool-ID-keyed memo are **session-derived** — call `/api/v2/swap/route` for every quote and use the IDs it returns in that response's `memo`. Cached IDs from a previous session can route through a pool that no longer exists, causing the transfer to revert at `swap.alcor`.
 
 Then transfer with the returned memo:
 
