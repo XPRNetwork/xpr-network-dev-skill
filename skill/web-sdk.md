@@ -214,7 +214,7 @@ async function transferTokens(to: string, amount: string, memo: string = '') {
 |-------|----------|----------|---------|
 | XPR | `eosio.token` | 4 | `1.0000 XPR` |
 | XUSDT | `xtokens` | 6 | `1.000000 XUSDT` |
-| FOOBAR | `xtokens` | 6 | `1.000000 FOOBAR` |
+| FOOBAR _(testnet only)_ | `xtokens` | 6 | `1.000000 FOOBAR` |
 | LOAN | `loan.token` | 4 | `1.0000 LOAN` |
 
 ### Custom Contract Action

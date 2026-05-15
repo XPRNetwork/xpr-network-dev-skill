@@ -150,10 +150,9 @@ https://explorer.xprnetwork.org/account/CONTRACT_NAME?tab=contract
 
 | Repository | Description |
 |------------|-------------|
-| [XPRNetwork/ts-smart-contracts](https://github.com/XPRNetwork/ts-smart-contracts) | Contract SDK (proton-tsc) |
-| [XPRNetwork/proton-web-sdk](https://github.com/XPRNetwork/proton-web-sdk) | Frontend wallet integration |
-| [XPRNetwork/proton-cli](https://github.com/XPRNetwork/proton-cli) | Command-line tools |
-| [XPRNetwork/proton-web-sdk](https://github.com/XPRNetwork/proton-web-sdk) | JavaScript RPC library |
+| [XPRNetwork/ts-smart-contracts](https://github.com/XPRNetwork/ts-smart-contracts) | Contract SDK (`proton-tsc`) |
+| [XPRNetwork/proton-web-sdk](https://github.com/XPRNetwork/proton-web-sdk) | Frontend wallet integration (`@proton/web-sdk`) — bundles `@proton/js` for RPC |
+| [XPRNetwork/proton-cli](https://github.com/XPRNetwork/proton-cli) | Command-line tools (`@proton/cli`) |
 
 ### Example Contracts
 
@@ -200,7 +199,7 @@ https://resources.xprnetwork.org
 
 | Resource | Cost |
 |----------|------|
-| RAM Storage | Dynamic (Bancor algorithm), ~0.000252 XPR per byte |
+| RAM Storage | Dynamic (Bancor algorithm) — query [`eosio::rammarket`](https://proton.eosusa.io/v1/chain/get_table_rows) for live price; **drifts**, don't hard-code |
 | Free RAM (WebAuth) | 12,000 bytes per account |
 | CPU/NET Basic | 100 XPR/month (~500 tx/day) |
 | CPU/NET Plus | 1,000 XPR/month (~5,000 tx/day) |
@@ -221,10 +220,11 @@ https://resources.xprnetwork.org
 | XPR | `eosio.token` | 4 |
 | XUSDT | `xtokens` | 6 |
 | XUSDC | `xtokens` | 6 |
-| FOOBAR | `xtokens` | 6 |
 | XBTC | `xtokens` | 8 |
 | XETH | `xtokens` | 8 |
+| XMD | `xmd.token` | 6 |
 | LOAN | `loan.token` | 4 |
+| _testnet only:_ FOOBAR | `xtokens` | 6 |
 
 ---
 
