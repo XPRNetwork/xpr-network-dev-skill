@@ -105,6 +105,8 @@ cat ./skills/xpr-network-dev/skill/SKILL.md
 | File | When to read |
 |---|---|
 | `skill/backend-patterns.md` → *Security: Key Isolation* | Once at startup; defines the signing pattern |
+| `skill/backend-patterns.md` → *When to use which pattern* | Once at startup; confirms the keychain pattern is right for your runtime |
+| `skill/rpc-queries.md` → *Endpoint Etiquette* | Once at startup; **mandatory** before any Hyperion polling — gets your agent banned otherwise |
 | `skill/metalx-dex.md` → *CRITICAL: DEX Token Deposits* | Before any transfer to the `dex` contract |
 | `skill/defi-trading.md` → fee math + *Add Liquidity* | Before any swap quote or LP operation on `proton.swaps` |
 | `skill/alcor-dex.md` → AI-agent policy block | Before any order action on `alcor` |

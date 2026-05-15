@@ -510,6 +510,81 @@ export const protonRPC = new ProtonRPC();
 
 Hyperion provides full history and state APIs. Base URL: `https://proton.eosusa.io`
 
+### Endpoint Etiquette (read this before deploying an agent)
+
+**Public Hyperion endpoints are run by community operators.** They're free at the point of use but not free to operate — every request costs the operator CPU, RAM, and bandwidth. Bad citizenship gets you rate-limited or banned, fast. Good citizenship keeps the public infra healthy for everyone.
+
+**Defaults that won't get you banned:**
+
+- **Don't poll faster than you need.** Live state that changes every block (head_block_num, freshest trades) is fine at 1–2 second intervals. Most state (balances, table rows, completed orders, account info) changes infrequently — **10 seconds or more is usually plenty**. Never sub-second.
+- **Prefer streaming over polling for live updates.** Hyperion exposes `/v2/stream` for action and delta streams; many operators also run WebSocket endpoints. One persistent subscription costs the operator one connection; one-second polling from one agent costs 86,400 requests/day.
+- **Cache aggressively.** `get_info` chain_id never changes — cache forever. ABIs change only on contract deploy — cache for hours. Account info (`get_account`), table schemas, block production schedules — cache for minutes-to-hours, not seconds.
+- **Rotate between Hyperion endpoints.** Not every RPC provider runs Hyperion — Hyperion is a heavier indexer (full action + table history) that some operators choose not to host. The verified Hyperion-serving endpoints on mainnet are the six listed in the polite client below; the broader RPC-only providers (e.g. `api.protonnz.com`, `proton.cryptolions.io`) serve `/v1/chain/*` only and will 404 on `/v2/history/*`. Round-robin or randomize between the Hyperion six per request to spread load; don't hammer a single operator.
+- **Respect `429 Too Many Requests` + `Retry-After`.** When you see a 429, back off exponentially (2s → 4s → 8s, cap at ~60s) and switch to a different endpoint. Don't keep firing.
+- **Identify yourself.** Set a meaningful `User-Agent` header (e.g. `XPRAgent/myagent 1.0`) so operators know who's hitting them. Anonymous traffic that misbehaves gets blocked first.
+- **High-volume? Run your own.** If your agent monitors every swap, indexes every NFT trade, or otherwise needs thousands of requests per minute, **don't rely on public Hyperion** — run your own indexer node or rent dedicated Hyperion capacity from one of the listed operators. Public endpoints are for ordinary usage, not background scrape jobs.
+
+**Known published rate limits:**
+
+| Service | Limit |
+|---------|-------|
+| `api.simpledex.com` | 120 req/min general; 50 req/min for `/trades`, `/holders`, `/og`, `/exports` (see `simpledex.md`) |
+| Public Hyperion (`proton.eosusa.io`, `api-xprnetwork-main.saltant.io`, etc.) | Not publicly stated. Treat as "respect 429s; if you see one, you've already crossed the line." |
+
+### Polite client (drop-in)
+
+A small fetch wrapper that rotates endpoints, respects `Retry-After`, and backs off exponentially. Use it for all Hyperion calls from an agent:
+
+```typescript
+// Verified Hyperion-serving endpoints on mainnet (May 2026).
+// Confirmed via GET /v2/history/get_actions?account=eosio.token&limit=1 → 200 with actions[]
+const HYPERION_ENDPOINTS = [
+  'https://proton.eosusa.io',
+  'https://proton.protonuk.io',
+  'https://proton-api.eosiomadrid.io',
+  'https://api-xprnetwork-main.saltant.io',
+  'https://xpr-mainnet-api.bloxprod.io',
+  'https://proton-hyperion.luminaryvisn.com',
+];
+
+const USER_AGENT = 'XPRAgent/your-agent-name 1.0';  // change this!
+
+async function politeFetch(
+  path: string,
+  options: RequestInit = {},
+  attempt = 0
+): Promise<Response> {
+  const endpoint = HYPERION_ENDPOINTS[attempt % HYPERION_ENDPOINTS.length];
+  const url = `${endpoint}${path}`;
+
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'User-Agent': USER_AGENT,
+      ...(options.headers || {}),
+    },
+  });
+
+  if (res.status === 429 || res.status === 503) {
+    if (attempt >= 5) {
+      throw new Error(`All endpoints rate-limiting after ${attempt + 1} attempts`);
+    }
+    const retryAfter = parseInt(res.headers.get('Retry-After') || '0', 10);
+    const backoffMs = retryAfter > 0
+      ? retryAfter * 1000
+      : Math.min(60_000, 2_000 * Math.pow(2, attempt));
+    await new Promise(r => setTimeout(r, backoffMs));
+    return politeFetch(path, options, attempt + 1);  // try the next endpoint
+  }
+
+  return res;
+}
+
+// Usage
+const res = await politeFetch('/v2/history/get_actions?account=myaccount&limit=20');
+const { actions } = await res.json();
+```
+
 ### History Endpoints
 
 | Endpoint | Description |

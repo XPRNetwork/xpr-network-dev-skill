@@ -29,13 +29,18 @@ Comprehensive list of endpoints, tools, documentation, and community resources f
 
 ### Mainnet
 
-| Endpoint | Provider | Notes |
-|----------|----------|-------|
-| `https://proton.eosusa.io` | EOSUSA | Primary, reliable |
-| `https://api.protonnz.com` | ProtonNZ | Good backup |
-| `https://api-xprnetwork-main.saltant.io` | Saltant | v1 + v2 (Hyperion) |
-| `https://proton.protonuk.io` | ProtonUK | Alternative |
-| `https://proton.cryptolions.io` | CryptoLions | Alternative |
+Verified May 2026 by hitting `/v1/chain/get_info` and `/v2/history/get_actions` on each. Some providers serve `/v1/chain/*` only; Hyperion (`/v2/history/*`, `/v2/state/*`) requires a heavier indexer not every operator hosts.
+
+| Endpoint | Provider | RPC | Hyperion |
+|----------|----------|-----|----------|
+| `https://proton.eosusa.io` | EOSUSA | ✓ | ✓ |
+| `https://proton.protonuk.io` | ProtonUK | ✓ | ✓ |
+| `https://proton-api.eosiomadrid.io` | EOS Madrid | ✓ | ✓ |
+| `https://api-xprnetwork-main.saltant.io` | Saltant | ✓ | ✓ |
+| `https://xpr-mainnet-api.bloxprod.io` | BloxProd | ✓ | ✓ |
+| `https://proton-hyperion.luminaryvisn.com` | Luminary Vision | ✓ | ✓ |
+| `https://api.protonnz.com` | ProtonNZ | ✓ | — |
+| `https://proton.cryptolions.io` | CryptoLions | ✓ | — |
 
 **P2P Peer:** `p2p-protonmain.saltant.io:9876`
 
@@ -58,12 +63,27 @@ curl -s https://proton.eosusa.io/v1/chain/get_info | jq '.head_block_num'
 
 ## History API (Hyperion)
 
-### Mainnet
+### Mainnet — Hyperion-serving endpoints
 
-| Endpoint |
-|----------|
-| `https://proton.eosusa.io/v2/history/get_actions` |
-| `https://proton.eosusa.io/v2/history/get_transaction` |
+Six verified Hyperion endpoints on mainnet (full list above includes RPC-only operators). Use a rotation pattern across these — see [`rpc-queries.md → Endpoint Etiquette`](./rpc-queries.md#endpoint-etiquette-read-this-before-deploying-an-agent) for the polite-fetch client.
+
+| Endpoint | Provider |
+|----------|----------|
+| `https://proton.eosusa.io` | EOSUSA |
+| `https://proton.protonuk.io` | ProtonUK |
+| `https://proton-api.eosiomadrid.io` | EOS Madrid |
+| `https://api-xprnetwork-main.saltant.io` | Saltant |
+| `https://xpr-mainnet-api.bloxprod.io` | BloxProd |
+| `https://proton-hyperion.luminaryvisn.com` | Luminary Vision |
+
+### Hyperion paths (all endpoints)
+
+| Path | Description |
+|------|-------------|
+| `/v2/history/get_actions` | Action history (with filter / account / limit) |
+| `/v2/history/get_transaction` | Transaction by ID |
+| `/v2/history/get_deltas` | Table delta history |
+| `/v2/state/get_account` | Account info with resources |
 
 ### Common Queries
 

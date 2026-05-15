@@ -2,18 +2,34 @@
 
 This guide covers server-side integration with XPR Network - signing transactions programmatically, automated operations, and production patterns.
 
+## When to use which pattern
+
+Not every workload fits the same signing model. Route yourself before going deeper:
+
+| Your runtime | Recommended pattern | Where to read |
+|--------------|---------------------|---------------|
+| **Browser / dApp frontend** | `@proton/web-sdk` (ProtonWebSDK) — user's wallet holds the key | [`web-sdk.md`](./web-sdk.md) |
+| **Long-running backend on a VPS / VM / Mac mini / dedicated host** | **proton CLI keychain** (this doc) | continue below |
+| **Autonomous AI agent** (Claude-driven, agent runner, etc.) | **proton CLI keychain** (this doc) — non-negotiable for agents after the charliebot incident | continue below |
+| **Smart contract dev workflows** (deploy, action invocation) | proton CLI (already standard) | [`cli-reference.md`](./cli-reference.md) |
+| **Serverless** (Vercel/Lambda/Cloudflare Workers) | KMS-backed signing OR ephemeral fetch from a secrets manager scoped to a custom permission | "Constrained environments" section below |
+| **CI/CD pipeline** (GitHub Actions deploying a contract, etc.) | Short-lived deploy permission via `linkauth`; key in CI secret only for the pipeline duration | "Constrained environments" section below |
+| **Multi-tenant SaaS** (each tenant has their own key) | KMS with per-tenant key isolation, or relay user-wallet-signed transactions | not yet documented — open an issue |
+
+The rest of this guide focuses on the proton CLI keychain pattern (long-running backend + agents). Other paths are linked above.
+
 ## Overview
 
-Backend integration differs from frontend (wallet) integration:
+For server-side integration where you have a persistent filesystem:
 
-| Aspect | Frontend (web-sdk) | Backend |
+| Aspect | Frontend (web-sdk) | Backend (this guide) |
 |--------|-------------------|---------|
-| Key storage | User's wallet | proton CLI's encrypted keychain (recommended) |
-| Signing | Wallet prompts user | proton CLI shells out from agent process |
+| Key storage | User's wallet | proton CLI's encrypted keychain |
+| Signing | Wallet prompts user | proton CLI shells out from process |
 | Use case | User-initiated actions | Automated/scheduled tasks |
 | Security | Wallet handles keys | **Key NEVER enters process memory** |
 
-> **Security update (v0.3.0+):** The traditional pattern of loading `XPR_PRIVATE_KEY` from `.env` into `JsSignatureProvider` is **no longer recommended** for production agents. Keys in process memory are reachable from every tool call, every log line, every web fetch, every paste into an AI conversation — a single accidental leak compromises the whole account. The recommended pattern routes signing through the proton CLI's encrypted keychain so the key never enters the agent process. See the "Security: Key Isolation" section below for the rationale and migration path.
+> **Security update (v0.3.0+):** The traditional pattern of loading `XPR_PRIVATE_KEY` from `.env` into `JsSignatureProvider` is **no longer recommended** for long-running backends or AI agents. Keys in process memory are reachable from every tool call, every log line, every web fetch, every paste into an AI conversation — a single accidental leak compromises the whole account. The recommended pattern routes signing through the proton CLI's encrypted keychain so the key never enters the process. See the "Security: Key Isolation" section below for the rationale and migration path. (For serverless / CI / browser cases where this doesn't apply, route via the table at the top.)
 
 ---
 
@@ -22,8 +38,8 @@ Backend integration differs from frontend (wallet) integration:
 ### One-time operator setup
 
 ```bash
-# Install the hardened proton CLI fork (redacts keys from key:list output)
-npm i -g github:paulgnz/proton-cli#security/key-list-redact
+# Install the proton CLI
+npm i -g @proton/cli
 
 # Pick the network
 proton chain:set proton              # or proton-test
@@ -553,20 +569,30 @@ const { rpc, session } = createCliSession({
 Operator setup happens once, outside the agent:
 
 ```bash
-npm i -g github:paulgnz/proton-cli#security/key-list-redact
+npm i -g @proton/cli
 proton chain:set proton
 proton key:add                # paste key once, stored encrypted in CLI keychain
 ```
 
 ### What this doesn't fix (honest list)
 
-- **The proton CLI itself can be attacked.** You trust whatever guarantees the CLI provides for its keychain — that's out of scope for the agent project. The hardened fork (`security/key-list-redact`) at least redacts keys from `key:list` output.
+- **The proton CLI itself can be attacked.** You trust whatever guarantees the CLI provides for its keychain — that's out of scope for the agent project.
 - **A2A still uses an EOSIO key in process.** Agent-to-agent signing needs to sign arbitrary messages, which the proton CLI doesn't expose. Use a separate `A2A_SIGNING_KEY` registered on a custom permission with no on-chain powers — limited blast radius (reputation only, not funds).
 - **OS-level isolation isn't perfect.** Root on the agent host can read the keychain. This refactor solves the application-level attack surface, not the host-level one.
 
-### Secrets managers (advanced)
+### Constrained environments (serverless, CI, ephemeral containers)
 
-If you genuinely cannot use the proton CLI keychain — say, you're running in a constrained environment without filesystem access — the next-best pattern is fetching the key from a secrets manager at signing time and zeroing it immediately:
+If your runtime has no persistent filesystem (serverless functions, CI pipelines, fresh containers per request), you can't use the proton CLI keychain — the keychain doesn't survive between invocations. You have three viable fallbacks, in order of preference:
+
+**1. KMS-backed signing.** Generate a key in AWS KMS / GCP KMS / Azure Key Vault. The KMS holds the private key; you call its sign API at transaction time. The private key bytes never leave the KMS service. Requires writing a custom signature provider that wraps the KMS sign call — out of scope for this guide.
+
+**2. Scoped permission + secrets manager.** Create a custom permission on your account (e.g. `@deploy`) with `linkauth` restricted to only the specific actions your runtime needs (e.g. `atomicassets::mintasset` for a mint serverless function). Store that key in a secrets manager. Even if leaked, the attacker can only invoke the linked actions — they cannot move funds or change permissions. See the "Permission Linking" section below for the `linkauth` mechanics.
+
+**3. Ephemeral fetch at signing time.** Last resort — fetch the key from a secrets manager, sign immediately, drop the reference. The key still touches process memory between fetch and sign, but the window is narrow. Always combine with scoped permissions (option 2) so a leak is bounded.
+
+#### Option 3 example (ephemeral fetch + JsSignatureProvider)
+
+If you genuinely cannot use a scoped KMS sign path, fetch the key from a secrets manager at signing time and zero it immediately:
 
 ```typescript
 // Last resort. The key still touches process memory between fetch and sign —
@@ -862,7 +888,7 @@ function loadConfig(): Config {
   if (process.env.XPR_PRIVATE_KEY) {
     throw new Error(
       'XPR_PRIVATE_KEY is set but is no longer supported.\n' +
-      '  1. Install proton CLI: npm i -g github:paulgnz/proton-cli#security/key-list-redact\n' +
+      '  1. Install proton CLI: npm i -g @proton/cli\n' +
       '  2. Add your key:        proton key:add\n' +
       '  3. Remove XPR_PRIVATE_KEY from your .env'
     );
@@ -872,7 +898,7 @@ function loadConfig(): Config {
   try {
     execSync(`proton key:list`, { stdio: 'pipe' });
   } catch {
-    throw new Error('proton CLI not found in PATH. Install with: npm i -g github:paulgnz/proton-cli#security/key-list-redact');
+    throw new Error('proton CLI not found in PATH. Install with: npm i -g @proton/cli');
   }
 
   return {
