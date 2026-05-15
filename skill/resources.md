@@ -213,18 +213,67 @@ https://resources.xprnetwork.org
 | Testnet | XPR | `proton faucet:claim XPR myaccount` |
 | Testnet | Web | https://resources.xprnetwork.org/faucet |
 
-### Token Contracts
+### Token Contract Registry
 
-| Token | Contract | Decimals |
-|-------|----------|----------|
-| XPR | `eosio.token` | 4 |
-| XUSDT | `xtokens` | 6 |
-| XUSDC | `xtokens` | 6 |
-| XBTC | `xtokens` | 8 |
-| XETH | `xtokens` | 8 |
-| XMD | `xmd.token` | 6 |
-| LOAN | `loan.token` | 4 |
-| _testnet only:_ FOOBAR | `xtokens` | 6 |
+Verified live (May 2026) via `get_currency_stats`. The **contract** column is what you pass as `account` in a `transfer` action; the **precision** must match exactly when constructing asset strings (`"1.0000 XPR"` is 4-decimal; `"1.000000 XUSDC"` is 6-decimal). Mismatching precision returns `Symbol mismatch` / asset-format errors.
+
+#### Native chain tokens
+
+| Token | Contract | Precision | Issuer | Notes |
+|-------|----------|-----------|--------|-------|
+| XPR | `eosio.token` | 4 | `eosio` | Native gas/staking token |
+| XMD | `xmd.token` | 6 | `xmd.treasury` | Metallicus USD stablecoin |
+| LOAN | `loan.token` | 4 | `lending.loan` | LOAN protocol governance |
+
+#### Wrapped tokens (all on `xtokens`)
+
+Wrapped 1:1 with assets from other blockchains. Bridge in/out via the MetalX UI.
+
+| Token | Underlying | Precision |
+|-------|------------|-----------|
+| XUSDT | Tether USD | 6 |
+| XUSDC | USD Coin | 6 |
+| XBTC | Bitcoin | 8 |
+| XETH | Ethereum | 8 |
+| XBCH | Bitcoin Cash | 8 |
+| XLTC | Litecoin | 8 |
+| XBNB | Binance Coin | 8 |
+| XEOS | EOS | 4 |
+| XADA | Cardano | 6 |
+| XDOGE | Dogecoin | 6 |
+| XHBAR | Hedera | 6 |
+| XSOL | Solana | 6 |
+| XXRP | Ripple | 6 |
+| XXLM | Stellar | 6 |
+
+> **Note:** wrapped tokens for Ripple and Stellar use a **double-X prefix** (`XXRP`, `XXLM`), not single-X. The single-X variants on Alcor are unrelated to the canonical wrapped versions.
+
+#### Project tokens (live)
+
+| Token | Contract | Precision | Project |
+|-------|----------|-----------|---------|
+| METAL | `xtokens` | 8 | MetalX |
+| XMT | `xtokens` | 8 | MetalX governance |
+| SNIPS | `snipcoins` | 4 | Snipcoins community |
+| STRX | `storex` | 4 | StoreX |
+
+#### Discovery
+
+To verify any token's current precision and issuer:
+
+```bash
+curl -s -X POST https://proton.eosusa.io/v1/chain/get_currency_stats \
+  -H 'Content-Type: application/json' \
+  -d '{"code":"<CONTRACT>","symbol":"<SYMBOL>"}'
+```
+
+The response gives `supply`, `max_supply`, and `issuer` for that token.
+
+#### Testnet placeholders
+
+| Token | Contract | Precision | Notes |
+|-------|----------|-----------|-------|
+| FOOBAR | `xtokens` | 6 | Test-only; do not reference in mainnet code paths |
 
 ---
 
