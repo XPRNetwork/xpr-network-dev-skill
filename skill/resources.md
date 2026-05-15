@@ -213,18 +213,69 @@ https://resources.xprnetwork.org
 | Testnet | XPR | `proton faucet:claim XPR myaccount` |
 | Testnet | Web | https://resources.xprnetwork.org/faucet |
 
-### Token Contracts
+### Token Contract Registry
 
-| Token | Contract | Decimals |
-|-------|----------|----------|
-| XPR | `eosio.token` | 4 |
-| XUSDT | `xtokens` | 6 |
-| XUSDC | `xtokens` | 6 |
-| XBTC | `xtokens` | 8 |
-| XETH | `xtokens` | 8 |
-| XMD | `xmd.token` | 6 |
-| LOAN | `loan.token` | 4 |
-| _testnet only:_ FOOBAR | `xtokens` | 6 |
+Verified live (May 2026) via `get_currency_stats`. The **contract** column is what you pass as `account` in a `transfer` action; the **precision** must match exactly when constructing asset strings (`"1.0000 XPR"` is 4-decimal; `"1.000000 XUSDC"` is 6-decimal). Mismatching precision returns `Symbol mismatch` / asset-format errors.
+
+#### Native chain tokens
+
+| Token | Contract | Precision | Issuer | Notes |
+|-------|----------|-----------|--------|-------|
+| XPR | `eosio.token` | 4 | `eosio` | Native gas/staking token |
+| XMD | `xmd.token` | 6 | `xmd.treasury` | Metallicus USD stablecoin |
+| LOAN | `loan.token` | 4 | `lending.loan` | LOAN protocol governance |
+
+#### Tokens on the `xtokens` contract
+
+`xtokens` is a **multi-token contract** hosting wrapped representations of assets from other chains. Most tokens use an `X` prefix to mark them as the XPR Network wrapped version (e.g. `XBTC` for Bitcoin, `XETH` for Ethereum). A few don't follow that prefix convention — they're on `xtokens` all the same.
+
+| Token | Precision | Wraps |
+|-------|-----------|-------|
+| XUSDT | 6 | Tether USD |
+| XUSDC | 6 | USD Coin |
+| XBTC | 8 | Bitcoin |
+| XETH | 8 | Ethereum |
+| XBCH | 8 | Bitcoin Cash |
+| XLTC | 8 | Litecoin |
+| XBNB | 8 | Binance Coin |
+| XEOS | 4 | EOS |
+| XADA | 6 | Cardano |
+| XDOGE | 6 | Dogecoin |
+| XHBAR | 6 | Hedera |
+| XSOL | 6 | Solana |
+| XXRP | 6 | Ripple — **double-X prefix**, not single-X |
+| XXLM | 6 | Stellar — **double-X prefix**, not single-X |
+| METAL | 8 | Metal Blockchain native token (a separate **Layer 0** — **not MetalX**, the DEX/Swap product) |
+| XMT | 8 | MTL — Metal DAO governance token, XPR Network representation |
+
+> **Two naming gotchas to watch for:**
+> - **`XXRP` and `XXLM` use a double-X prefix.** Single-X variants on Alcor (e.g. `XRP@some-other-contract`) are unrelated to the canonical wrapped versions on `xtokens` and may have different precision or no liquidity.
+> - **`METAL` ≠ MetalX.** METAL is a wrapped representation of **Metal Blockchain** (a separate **Layer 0**, unrelated to XPR Network apart from this bridged token). MetalX is the DEX/Swap product on XPR Network. They share a brand prefix but refer to different things.
+
+#### Project tokens on their own contracts
+
+| Token | Contract | Precision | Project |
+|-------|----------|-----------|---------|
+| SNIPS | `snipcoins` | 4 | Snipcoins community |
+| STRX | `storex` | 4 | StoreX |
+
+#### Discovery
+
+To verify any token's current precision and issuer:
+
+```bash
+curl -s -X POST https://proton.eosusa.io/v1/chain/get_currency_stats \
+  -H 'Content-Type: application/json' \
+  -d '{"code":"<CONTRACT>","symbol":"<SYMBOL>"}'
+```
+
+The response gives `supply`, `max_supply`, and `issuer` for that token.
+
+#### Testnet placeholders
+
+| Token | Contract | Precision | Notes |
+|-------|----------|-----------|-------|
+| FOOBAR | `xtokens` | 6 | Test-only; do not reference in mainnet code paths |
 
 ---
 

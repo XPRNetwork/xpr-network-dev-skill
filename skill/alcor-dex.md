@@ -40,6 +40,15 @@ Base: `https://proton.alcor.exchange/api/v2`. Timestamps in milliseconds. Real-t
 | `GET /tickers/{ticker_id}` | Single ticker; id format `base-contract_quote-contract` (e.g. `loan-loan.token_xusdc-xtokens`) |
 | `GET /analytics/global` | TVL, pool count, swap count, volumes |
 
+> **Don't enumerate Alcor markets at build time.** Unlike MetalX DEX (18 stable markets), Alcor has **~1,600 markets registered on `chain=proton`** — most are long-tail tokens with no recent volume. Filter by `frozen: false` and `volume24 > 0` if you only want active markets:
+>
+> ```bash
+> curl -s "https://proton.alcor.exchange/api/markets" \
+>   | jq '[.[] | select(.frozen == false and (.volume24 // 0) > 0)]'
+> ```
+>
+> The list of active markets churns daily. Discover at runtime, never cache market IDs across sessions, and pass IDs through unchanged from the route response (see [Identifying a Pool from the API](#identifying-a-pool-from-the-api) below).
+
 ### Order Book Market Data
 
 | Endpoint | Description |
@@ -182,17 +191,39 @@ proton action tokencreate transfer \
 
 > **Source:** Verified against `store/market.js` `fetchBuy` / `fetchSell` in [alcor-ui](https://github.com/alcorexchange/alcor-ui/blob/master/store/market.js). Both actions construct the memo as `<desired_amount> <desired_symbol>@<desired_contract>`.
 
+> ⚠️ **Malformed-memo failure modes.** Alcor's transfer notification handler is strict about memo shape; what happens to your funds depends on the failure mode:
+>
+> | Memo state | What happens |
+> |------------|--------------|
+> | **Empty** (`memo: ""`) | Transfer **reverts**. Alcor doesn't accept empty-memo deposits — the transfer fails entirely and funds stay in your wallet. **Safer than MetalX's `dex` contract, which silently strands empty-memo deposits.** |
+> | **Wrong format** (missing `@contract`, bad amount, unknown symbol) | Transfer reverts with an assertion failure naming the parse error. Funds stay in your wallet. |
+> | **Right format, market doesn't exist** | Transfer reverts. Open the market first via `alcor::openmarket` (50,000 XPR fee), or use an existing market. |
+> | **Right format, correct market, price violates min order size** | Transfer reverts. Check `markets` table for `min_buy` / `min_sell` thresholds. |
+>
+> Net effect: Alcor **fails closed** on bad memos — funds aren't stranded, but the transfer doesn't go through either. Verify your memo format before relying on a placed order existing.
+
 ### Cancel an order
 
+Alcor has **two separate cancel actions** — one for each side of the book. Pick the one matching the side your order sits on:
+
+| You placed by transferring... | Order lives on | Cancel with |
+|-------------------------------|----------------|-------------|
+| The **quote** token (e.g. XPR, expecting to receive TDBN) | **Buy** side | `alcor::cancelbuy` |
+| The **base** token (e.g. TDBN, expecting to receive XPR) | **Sell** side | `alcor::cancelsell` |
+
+**Decoder rule for `<base>_<quote>` markets:** if you transferred the **quote token** with the **base symbol in the memo**, you placed a buy → use `cancelbuy`. If you transferred the **base token** with the **quote symbol in the memo**, you placed a sell → use `cancelsell`. Calling the wrong cancel action just returns "order not found" — it doesn't reveal which action you actually need.
+
 ```bash
+# Cancel a buy (XPR-side of a TDBN_XPR pair)
 proton action alcor cancelbuy \
   '{"executor":"trader","market_id":2,"order_id":123}' trader
 
+# Cancel a sell (TDBN-side of a TDBN_XPR pair)
 proton action alcor cancelsell \
   '{"executor":"trader","market_id":2,"order_id":123}' trader
 ```
 
-Look up your `order_id` via `get_table_rows` on `buyorder` / `sellorder` with scope = market id (string).
+Look up your `order_id` via `get_table_rows` on `buyorder` / `sellorder` with `scope` = market id (as a string), or via the `/account/{name}/orders` REST endpoint.
 
 ### Direct actions (verified from ABI)
 
