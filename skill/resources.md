@@ -225,35 +225,35 @@ Verified live (May 2026) via `get_currency_stats`. The **contract** column is wh
 | XMD | `xmd.token` | 6 | `xmd.treasury` | Metallicus USD stablecoin |
 | LOAN | `loan.token` | 4 | `lending.loan` | LOAN protocol governance |
 
-#### Wrapped tokens (all on `xtokens`)
+#### Tokens on the `xtokens` contract
 
-Wrapped 1:1 with assets from other blockchains. Bridge in/out via the MetalX UI.
+`xtokens` is a **multi-token contract** that hosts both wrapped assets from other chains AND native project tokens. Contract is the same (`xtokens`) for every row below; precision and use case differ.
 
-| Token | Underlying | Precision |
-|-------|------------|-----------|
-| XUSDT | Tether USD | 6 |
-| XUSDC | USD Coin | 6 |
-| XBTC | Bitcoin | 8 |
-| XETH | Ethereum | 8 |
-| XBCH | Bitcoin Cash | 8 |
-| XLTC | Litecoin | 8 |
-| XBNB | Binance Coin | 8 |
-| XEOS | EOS | 4 |
-| XADA | Cardano | 6 |
-| XDOGE | Dogecoin | 6 |
-| XHBAR | Hedera | 6 |
-| XSOL | Solana | 6 |
-| XXRP | Ripple | 6 |
-| XXLM | Stellar | 6 |
+| Token | Type | Precision | Notes |
+|-------|------|-----------|-------|
+| XUSDT | Wrapped | 6 | Tether USD (wrapped) |
+| XUSDC | Wrapped | 6 | USD Coin (wrapped) |
+| XBTC | Wrapped | 8 | Bitcoin |
+| XETH | Wrapped | 8 | Ethereum |
+| XBCH | Wrapped | 8 | Bitcoin Cash |
+| XLTC | Wrapped | 8 | Litecoin |
+| XBNB | Wrapped | 8 | Binance Coin |
+| XEOS | Wrapped | 4 | EOS |
+| XADA | Wrapped | 6 | Cardano |
+| XDOGE | Wrapped | 6 | Dogecoin |
+| XHBAR | Wrapped | 6 | Hedera |
+| XSOL | Wrapped | 6 | Solana |
+| XXRP | Wrapped | 6 | Ripple — **double-X prefix**, not single-X |
+| XXLM | Wrapped | 6 | Stellar — **double-X prefix**, not single-X |
+| METAL | Project | 8 | MetalX project token |
+| XMT | Project | 8 | MetalX governance token (sometimes called "MTL") |
 
-> **Note:** wrapped tokens for Ripple and Stellar use a **double-X prefix** (`XXRP`, `XXLM`), not single-X. The single-X variants on Alcor are unrelated to the canonical wrapped versions.
+> **Note:** XXRP / XXLM use a **double-X prefix**. Single-X variants on Alcor (e.g. `XRP@some-other-contract`) are unrelated to the canonical wrapped versions on `xtokens` and may have different precision or no liquidity.
 
-#### Project tokens (live)
+#### Project tokens on their own contracts
 
 | Token | Contract | Precision | Project |
 |-------|----------|-----------|---------|
-| METAL | `xtokens` | 8 | MetalX |
-| XMT | `xtokens` | 8 | MetalX governance |
 | SNIPS | `snipcoins` | 4 | Snipcoins community |
 | STRX | `storex` | 4 | StoreX |
 
