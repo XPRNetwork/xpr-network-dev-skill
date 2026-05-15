@@ -191,6 +191,17 @@ proton action tokencreate transfer \
 
 > **Source:** Verified against `store/market.js` `fetchBuy` / `fetchSell` in [alcor-ui](https://github.com/alcorexchange/alcor-ui/blob/master/store/market.js). Both actions construct the memo as `<desired_amount> <desired_symbol>@<desired_contract>`.
 
+> ⚠️ **Malformed-memo failure modes.** Alcor's transfer notification handler is strict about memo shape; what happens to your funds depends on the failure mode:
+>
+> | Memo state | What happens |
+> |------------|--------------|
+> | **Empty** (`memo: ""`) | Transfer **reverts**. Alcor doesn't accept empty-memo deposits — the transfer fails entirely and funds stay in your wallet. **Safer than MetalX's `dex` contract, which silently strands empty-memo deposits.** |
+> | **Wrong format** (missing `@contract`, bad amount, unknown symbol) | Transfer reverts with an assertion failure naming the parse error. Funds stay in your wallet. |
+> | **Right format, market doesn't exist** | Transfer reverts. Open the market first via `alcor::openmarket` (50,000 XPR fee), or use an existing market. |
+> | **Right format, correct market, price violates min order size** | Transfer reverts. Check `markets` table for `min_buy` / `min_sell` thresholds. |
+>
+> Net effect: Alcor **fails closed** on bad memos — funds aren't stranded, but the transfer doesn't go through either. Verify your memo format before relying on a placed order existing.
+
 ### Cancel an order
 
 Alcor has **two separate cancel actions** — one for each side of the book. Pick the one matching the side your order sits on:
