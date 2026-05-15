@@ -193,15 +193,26 @@ proton action tokencreate transfer \
 
 ### Cancel an order
 
+Alcor has **two separate cancel actions** — one for each side of the book. Pick the one matching the side your order sits on:
+
+| You placed by transferring... | Order lives on | Cancel with |
+|-------------------------------|----------------|-------------|
+| The **quote** token (e.g. XPR, expecting to receive TDBN) | **Buy** side | `alcor::cancelbuy` |
+| The **base** token (e.g. TDBN, expecting to receive XPR) | **Sell** side | `alcor::cancelsell` |
+
+**Decoder rule for `<base>_<quote>` markets:** if you transferred the **quote token** with the **base symbol in the memo**, you placed a buy → use `cancelbuy`. If you transferred the **base token** with the **quote symbol in the memo**, you placed a sell → use `cancelsell`. Calling the wrong cancel action just returns "order not found" — it doesn't reveal which action you actually need.
+
 ```bash
+# Cancel a buy (XPR-side of a TDBN_XPR pair)
 proton action alcor cancelbuy \
   '{"executor":"trader","market_id":2,"order_id":123}' trader
 
+# Cancel a sell (TDBN-side of a TDBN_XPR pair)
 proton action alcor cancelsell \
   '{"executor":"trader","market_id":2,"order_id":123}' trader
 ```
 
-Look up your `order_id` via `get_table_rows` on `buyorder` / `sellorder` with scope = market id (string).
+Look up your `order_id` via `get_table_rows` on `buyorder` / `sellorder` with `scope` = market id (as a string), or via the `/account/{name}/orders` REST endpoint.
 
 ### Direct actions (verified from ABI)
 
