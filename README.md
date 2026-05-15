@@ -195,7 +195,7 @@ For any AI tool, you can paste sections directly:
 | -------------------------------------------------- | ----------------------------------------------------- |
 | [safety-guidelines.md](skill/safety-guidelines.md) | CRITICAL: Table modification rules, deployment safety |
 | [troubleshooting.md](skill/troubleshooting.md)     | Common errors, solutions, diagnostics                 |
-| [examples.md](skill/examples.md)                   | Real-world patterns from production contracts         |
+| [examples.md](skill/examples.md)                   | Community example contracts (PriceBattle, ProtonWall, ProtonRating) — educational |
 | [resources.md](skill/resources.md)                 | Endpoints, links, community resources                 |
 
 ## Usage with Claude Code

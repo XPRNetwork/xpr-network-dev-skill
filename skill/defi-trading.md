@@ -970,6 +970,39 @@ function calculateSwapOutput(
 }
 ```
 
+### Slippage Protection
+
+When calling `proton.swaps` directly (no MetalX UI to compute slippage for you), the **memo** carries the minimum-acceptable output as an integer (`<LT_SYMBOL>,<MIN_OUTPUT_RAW>`). If actual on-chain output falls below `<MIN_OUTPUT_RAW>` the contract reverts the swap and returns your input.
+
+Compute `MIN_OUTPUT_RAW` from your expected output and a tolerance:
+
+```typescript
+function slippageProtectedMin(
+  expectedOutput: number,        // from calculateSwapOutput, in human units
+  outputPrecision: number,       // e.g. 6 for XUSDC, 4 for XPR, 8 for XBTC
+  slippageBps: number = 50       // 50 = 0.5%; common defaults: 30 (0.3%), 50 (0.5%), 100 (1%)
+): string {
+  const minHuman = expectedOutput * (10_000 - slippageBps) / 10_000;
+  // Convert to the raw-integer form the contract expects:
+  const minRaw = Math.floor(minHuman * Math.pow(10, outputPrecision));
+  return minRaw.toString();
+}
+
+// Example: swap 1000 XPR → XUSDC, expect 2.20 XUSDC, accept up to 0.5% slippage
+const minOut = slippageProtectedMin(2.20, 6, 50);  // → "2189000"
+const memo = `XPRUSDC,${minOut}`;
+// "XPRUSDC,2189000" — contract will revert if final XUSDC out is below 2.189 XUSDC
+```
+
+**Rules of thumb:**
+
+- **Stablecoin → stablecoin** swaps: 0.1–0.3% slippage is usually fine.
+- **Volatile pair** with thin liquidity: 0.5–1% to absorb intra-block price drift.
+- **Multi-hop via `proton.swaps`**: prefer the official routing API; manual multi-hop slippage compounds across legs and you'll need to widen tolerance per hop.
+- **Don't use `MIN_OUTPUT = 1`** in production — that disables slippage protection entirely. The doc snippet earlier uses `1` for clarity, not as a recommendation.
+
+`maxSent` / `maxIn` works the same way for `EXACT_OUTPUT`-style swaps if/when the AMM exposes that mode; the current `proton.swaps` transfer-memo path is `EXACT_INPUT` only.
+
 ### Add Liquidity
 
 `liquidityadd` consumes tokens from your **deposit balance** on `proton.swaps` — it does **not** pull from your wallet directly. Calling `liquidityadd` against an empty deposit balance fails with `insufficient balance`. The end-to-end flow is three steps:

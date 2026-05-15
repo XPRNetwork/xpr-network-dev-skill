@@ -73,7 +73,23 @@ Base: `https://proton.alcor.exchange/api/v2`. Timestamps in milliseconds. Real-t
 Required: `trade_type` (`EXACT_INPUT` or `EXACT_OUTPUT`), `input`, `output` (each as `symbol-contract`), `amount`.
 Optional: `slippage` (default `0.3`), `receiver` (defaults to placeholder `<receiver>`), `maxHops` (capped at 3), `includePoolDetails`, `v2`.
 
-The response includes a `memo` field already formatted for the swap transfer — substitute `<receiver>` if you didn't pass it.
+The response includes a `memo` field already formatted for the swap transfer. If you didn't pass `receiver`, the returned memo contains the literal string `<receiver>` as a placeholder — substitute it with the recipient account before broadcasting:
+
+```bash
+# Returned memo (placeholder in the trader slot):
+#   "swapexactin#394,9476,9023#<receiver>#0.027783 XUSDC@xtokens#0"
+
+# Substitute before transferring:
+RECIPIENT="trader"
+MEMO=$(echo "$RAW_MEMO" | sed "s/<receiver>/$RECIPIENT/")
+# →  "swapexactin#394,9476,9023#trader#0.027783 XUSDC@xtokens#0"
+
+proton action eosio.token transfer \
+  "{\"from\":\"trader\",\"to\":\"swap.alcor\",\"quantity\":\"10.0000 XPR\",\"memo\":\"$MEMO\"}" \
+  trader
+```
+
+If your client passes `receiver=<account>` in the request, the returned memo already has the substitution done — no string-replace needed.
 
 ### Account History
 
