@@ -40,6 +40,15 @@ Base: `https://proton.alcor.exchange/api/v2`. Timestamps in milliseconds. Real-t
 | `GET /tickers/{ticker_id}` | Single ticker; id format `base-contract_quote-contract` (e.g. `loan-loan.token_xusdc-xtokens`) |
 | `GET /analytics/global` | TVL, pool count, swap count, volumes |
 
+> **Don't enumerate Alcor markets at build time.** Unlike MetalX DEX (18 stable markets), Alcor has **~1,600 markets registered on `chain=proton`** — most are long-tail tokens with no recent volume. Filter by `frozen: false` and `volume24 > 0` if you only want active markets:
+>
+> ```bash
+> curl -s "https://proton.alcor.exchange/api/markets" \
+>   | jq '[.[] | select(.frozen == false and (.volume24 // 0) > 0)]'
+> ```
+>
+> The list of active markets churns daily. Discover at runtime, never cache market IDs across sessions, and pass IDs through unchanged from the route response (see [Identifying a Pool from the API](#identifying-a-pool-from-the-api) below).
+
 ### Order Book Market Data
 
 | Endpoint | Description |

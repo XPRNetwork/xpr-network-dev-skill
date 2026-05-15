@@ -208,6 +208,38 @@ GET /dex/v1/tax/user
 
 ---
 
+## Known Markets
+
+Live MetalX DEX markets (18 total, May 2026 snapshot). The `market_id` is what you pass to `placeorder` etc. **Markets can be added or status-changed** — query `/dex/v1/markets/all` for the current set rather than hard-coding IDs in production tooling.
+
+| ID | Symbol | Notes |
+|----|--------|-------|
+| 1 | `XPR_XMD` | |
+| 2 | `XBTC_XMD` | **0% trading fees** (per [docs.metalx.com](https://docs.metalx.com/dex/what-is-metal-x/dex-fees-and-discounts)) |
+| 3 | `XETH_XMD` | |
+| 4 | `XMD_XUSDT` | Stablecoin pair |
+| 5 | `XPR_XUSDC` | |
+| 6 | `XBTC_XUSDC` | |
+| 7 | `XMT_XMD` | |
+| 8 | `XMT_XUSDC` | |
+| 9 | `LOAN_XMD` | |
+| 10 | `METAL_XMD` | |
+| 11 | `XDC_XMD` | |
+| 12 | `XDOGE_XMD` | |
+| 13 | `XHBAR_XMD` | |
+| 14 | `XLTC_XMD` | |
+| 15 | `XXRP_XMD` | |
+| 16 | `XSOL_XMD` | |
+| 17 | `XXLM_XMD` | |
+| 18 | `XADA_XMD` | |
+
+```bash
+# Fetch the current set
+curl -s "https://dex.api.mainnet.metalx.com/dex/v1/markets/all" | jq '.data[] | {market_id, symbol, status}'
+```
+
+---
+
 ## Contract Mappings
 
 ### Order Types
