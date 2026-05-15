@@ -764,6 +764,10 @@ That's the entire Python dependency footprint — no `pyeoskit`, no key library,
 
 Holders of limited edition NFT DEX Keys receive **100% fee discount**.
 
+#### 0% Trading Fees on the XBTC Market
+
+The **XBTC/XMD** market on the DEX has **zero trading fees** for all users regardless of tier. Documented at [docs.metalx.com → DEX fees and discounts](https://docs.metalx.com/dex/what-is-metal-x/dex-fees-and-discounts).
+
 ### Swap Fees
 
 Canonical source: [docs.metalx.com → Swap fees and discounts](https://docs.metalx.com/swap-pools-and-farms/what-is-metal-x-swap/swap-fees-and-discounts).
@@ -800,9 +804,17 @@ Metal X Swap is an automated market maker (AMM) for instant token swaps.
 
 > **Under the hood:** the MetalX Swap UI is a front-end on top of the chain-native **`proton.swaps`** contract — same pools, same liquidity, same v2 constant-product math. The MetalX app handles wallet, routing and fees-discount logic, but the on-chain venue is `proton.swaps`. For contract-level details (pool table layout, swap memo format, `liquidityadd` / `liquidityrmv` actions, multi-hop), see [`defi-trading.md`](./defi-trading.md) — the "Proton Swaps (AMM Liquidity Pools)" section. Programmatic integrators talk to `proton.swaps` directly; there is no separate MetalX-branded swap contract on chain (verified via `get_account` against likely candidates like `metalx.swap`, `swap.metalx`, etc. — none exist).
 
-### Available Swap Tokens
+### Available Swap Tokens (actively traded, May 2026)
 
-XPR, XUSDC, XBTC, XETH, XDOGE, XBCH, XLTC, XUSDT, XUNI, XBNB, XEOS, XADA, METAL, XMT, LOAN, STRX, MINT, SNIPS, XLUNR
+`XPR`, `XUSDC`, `XUSDT`, `XMD`, `METAL`, `XMT`, `LOAN`, `XBTC`, `XETH`, `XBNB`, `XADA`, `XLTC`, `XEOS`, `XDOGE`, `SNIPS`
+
+The canonical MetalX [Swap FAQ](https://docs.metalx.com/swap-pools-and-farms/what-is-metal-x-swap/metal-x-swap-faq) lists additional historical tokens (e.g. `STRX`, `MINT`, `XUNI`, `XBCH`, `XLUNR`) that have very low or no recent on-chain activity. The list above filters to pools with measurable swap volume in the last 500 chain-recorded swaps. Query the `pools` table on `proton.swaps` for the complete on-chain set:
+
+```bash
+curl -s -X POST https://proton.eosusa.io/v1/chain/get_table_rows \
+  -H 'Content-Type: application/json' \
+  -d '{"code":"proton.swaps","scope":"proton.swaps","table":"pools","json":true,"limit":100}'
+```
 
 ### Wrapped Tokens
 
