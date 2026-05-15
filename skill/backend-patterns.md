@@ -530,7 +530,7 @@ cron.schedule('0 * * * *', cleanupExpired);
 
 ## Security: Key Isolation
 
-### The charliebot incident (April 2026)
+### The charliebot incident (2026-04-24)
 
 An autonomous agent (charliebot) was compromised when an AI assistant working in the codebase pasted a hardcoded `PVT_K1_…` value into a script. The script was committed, pushed to a public repo, and within hours an attacker had drained the wallet — sold the memecoins, sold the XPR, moved everything out through HitBTC.
 
