@@ -76,8 +76,8 @@ Optional: `slippage` (default `0.3`), `receiver` (defaults to placeholder `<rece
 The response includes a `memo` field already formatted for the swap transfer. If you didn't pass `receiver`, the returned memo contains the literal string `<receiver>` as a placeholder — substitute it with the recipient account before broadcasting:
 
 ```bash
-# Returned memo (placeholder in the trader slot):
-#   "swapexactin#394,9476,9023#<receiver>#0.027783 XUSDC@xtokens#0"
+# The memo as returned by getRoute (placeholder in the receiver slot):
+RAW_MEMO="swapexactin#394,9476,9023#<receiver>#0.027783 XUSDC@xtokens#0"
 
 # Substitute before transferring:
 RECIPIENT="trader"
@@ -191,7 +191,7 @@ Single rule that covers both directions:
 
 The implied unit price is `quantity_transferred : amount_in_memo`. The order goes to the buy or sell side depending on which token of the pair you transferred.
 
-> **Decimal precision matters.** XPR is **4-decimal** (`7977.4902 XPR`), XUSDC / XUSDT / XMD are **6-decimal**, XBTC / XETH are **8-decimal**. The quantity string must match the token's on-chain `eosio.token::stat` precision exactly or the transfer is rejected as an asset-format error. Don't normalize precision in your client. See [`resources.md → Token Contracts`](./resources.md#token-contracts) for the full list.
+> **Decimal precision matters.** XPR is **4-decimal** (`7977.4902 XPR`), XUSDC / XUSDT / XMD are **6-decimal**, XBTC / XETH are **8-decimal**. The quantity string must match the token's on-chain `eosio.token::stat` precision exactly or the transfer is rejected as an asset-format error. Don't normalize precision in your client. See [`resources.md → Token Contract Registry`](./resources.md#token-contract-registry) for the full list.
 
 ```bash
 # BUY TDBN with XPR — transfer XPR (4-decimal), ask for TDBN in memo

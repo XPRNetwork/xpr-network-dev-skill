@@ -49,7 +49,7 @@ This release closes the post-audit triage and ships the canonical reference tabl
 
 ### Triage state at release
 
-19 of 19 audit items closed (C1–C6, H1–H6, M1–M7, L1–L5 minus L4 which couldn't be reproduced).
+23 of 24 audit items closed (C1–C6, H1–H6, M1–M7, L1–L5; L4 couldn't be reproduced and was dropped).
 
 ---
 

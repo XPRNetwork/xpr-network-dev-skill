@@ -65,7 +65,7 @@ curl -s https://proton.eosusa.io/v1/chain/get_info | jq '.head_block_num'
 
 ### Mainnet — Hyperion-serving endpoints
 
-Six verified Hyperion endpoints on mainnet (full list above includes RPC-only operators). Use a rotation pattern across these — see [`rpc-queries.md → Endpoint Etiquette`](./rpc-queries.md#endpoint-etiquette-read-this-before-deploying-an-agent) for the polite-fetch client.
+Six verified Hyperion endpoints on mainnet (full list above includes RPC-only operators). Use a rotation pattern across these — see [`rpc-queries.md → Endpoint Etiquette`](./rpc-queries.md#endpoint-etiquette-rpc--hyperion--read-before-deploying-an-agent) for the polite-fetch client.
 
 | Endpoint | Provider |
 |----------|----------|
