@@ -1,6 +1,6 @@
-# Metal X DEX API Reference
+# MetalX DEX API Reference
 
-> Complete API documentation for Metal X Decentralized Exchange on XPR Network
+> Complete API documentation for MetalX Decentralized Exchange on XPR Network
 
 ## Overview
 
@@ -59,6 +59,16 @@ Returns all available trading markets/pairs.
 GET /dex/v1/chart/ohlcv
 ```
 Returns OHLCV (Open, High, Low, Close, Volume) chart data.
+
+**Query Parameters** (verified live):
+- `symbol` (required) — market symbol, e.g. `XPR_XMD` (**not** `market_id`)
+- `interval` (required) — one of `1D` (daily), `240` (4h), `60` (1h), `15` (15m), `5` (5m). Values like `1h` or `86400` return `Invalid interval`.
+- `from` / `to` (required) — **ISO date strings** (e.g. `2026-05-09`), not epoch timestamps. Epoch values return HTTP 500.
+
+```bash
+curl "https://dex.api.mainnet.metalx.com/dex/v1/chart/ohlcv?symbol=XPR_XMD&interval=1D&from=2026-05-09&to=2026-05-16"
+# → { sync, data: [{ time (ms), open, high, low, close, volume, volume_bid, count }] }
+```
 
 ---
 
@@ -235,7 +245,7 @@ Live MetalX DEX markets (18 total, May 2026 snapshot). The `market_id` is what y
 
 ```bash
 # Fetch the current set
-curl -s "https://dex.api.mainnet.metalx.com/dex/v1/markets/all" | jq '.data[] | {market_id, symbol, status}'
+curl -s "https://dex.api.mainnet.metalx.com/dex/v1/markets/all" | jq '.data[] | {market_id, symbol, status_code}'
 ```
 
 ---
@@ -246,7 +256,7 @@ curl -s "https://dex.api.mainnet.metalx.com/dex/v1/markets/all" | jq '.data[] | 
 
 | Value | Type | Description |
 |-------|------|-------------|
-| `0` | Orderbook | Order sitting in orderbook waiting to be matched (internal state, not user-placeable) |
+| `0` | Orderbook | Order sitting in the order book waiting to be matched (internal state, not user-placeable) |
 | `1` | Limit | Limit order with specified price. For **Market Buy**: set `price = 9223372036854775806`. For **Market Sell**: set `price = 1` |
 | `2` | Stop Loss | Triggers when price drops to `trigger_price`, then executes at `price` |
 | `3` | Take Profit | Triggers when price rises to `trigger_price`, then executes at `price` |
@@ -273,7 +283,7 @@ curl -s "https://dex.api.mainnet.metalx.com/dex/v1/markets/all" | jq '.data[] | 
 | Status | Description |
 |--------|-------------|
 | `create` | Order successfully added to order queue |
-| `transfer` | Order promoted to orderbook (eligible for execution based on last execution price) |
+| `transfer` | Order promoted to order book (eligible for execution based on last execution price) |
 | `update` | Partial fill - represents remaining pending quantity |
 | `cancel` | Remaining quantity canceled by user |
 | `delete` | Order fully executed |
@@ -347,7 +357,7 @@ Creates a new order and places it into the order queue or stop-loss/take-profit 
 
 #### cancelorder
 
-Cancels an order in the order queue, stop-loss table, or orderbook.
+Cancels an order in the order queue, stop-loss table, or order book.
 
 **Parameters:**
 
@@ -704,7 +714,7 @@ class MetalXService {
     return res.json();
   }
 
-  // Get orderbook depth — takes symbol + step, NOT market_id
+  // Get order book depth — takes symbol + step, NOT market_id
   async getOrderbook(symbol: string, step: number = 0.0001) {
     const res = await fetch(`${this.baseUrl}/dex/v1/orders/depth?symbol=${symbol}&step=${step}`);
     return res.json();
@@ -728,10 +738,15 @@ class MetalXService {
     return res.json();
   }
 
-  // Get OHLCV data
-  async getOHLCV(marketId: number, interval: string, from: number, to: number) {
+  // Get OHLCV data — takes symbol (not market_id); from/to are ISO date strings
+  async getOHLCV(
+    symbol: string,
+    interval: '1D' | '240' | '60' | '15' | '5',
+    from: string,  // ISO date, e.g. '2026-05-09' — epoch timestamps return HTTP 500
+    to: string
+  ) {
     const res = await fetch(
-      `${this.baseUrl}/dex/v1/chart/ohlcv?market_id=${marketId}&interval=${interval}&from=${from}&to=${to}`
+      `${this.baseUrl}/dex/v1/chart/ohlcv?symbol=${symbol}&interval=${interval}&from=${from}&to=${to}`
     );
     return res.json();
   }
@@ -832,7 +847,7 @@ The MetalX Swap UI sits on top of the on-chain `proton.swaps` contract. For prog
 
 ## Swap (AMM)
 
-Metal X Swap is an automated market maker (AMM) for instant token swaps.
+MetalX Swap is an automated market maker (AMM) for instant token swaps.
 
 > **Under the hood:** the MetalX Swap UI is a front-end on top of the chain-native **`proton.swaps`** contract — same pools, same liquidity, same v2 constant-product math. The MetalX app handles wallet, routing and fees-discount logic, but the on-chain venue is `proton.swaps`. For contract-level details (pool table layout, swap memo format, `liquidityadd` / `liquidityrmv` actions, multi-hop), see [`defi-trading.md`](./defi-trading.md) — the "Proton Swaps (AMM Liquidity Pools)" section. Programmatic integrators talk to `proton.swaps` directly; there is no separate MetalX-branded swap contract on chain (verified via `get_account` against likely candidates like `metalx.swap`, `swap.metalx`, etc. — none exist).
 
@@ -907,7 +922,7 @@ When token prices change relative to deposit time, you may experience impermanen
 
 ## DEX Bot (Trading Bot)
 
-Official open-source trading bot for automated trading on Metal X.
+Official open-source trading bot for automated trading on MetalX.
 
 **Repository:** https://github.com/XPRNetwork/dex-bot
 
@@ -921,7 +936,7 @@ Official open-source trading bot for automated trading on Metal X.
 #### Market Maker Bot
 - Places ladder of buy/sell orders around base price
 - Direction-agnostic strategy
-- Provides liquidity to orderbook
+- Provides liquidity to order book
 
 ### Configuration Example
 
@@ -991,7 +1006,7 @@ npm run bot
 
 ## Additional Resources
 
-- **Metal X App:** https://app.metalx.com
+- **MetalX App:** https://app.metalx.com
 - **API Docs:** https://api.dex.docs.metalx.com/
 - **Developer Docs:** https://docs.metalx.com/
 - **WebAuth Wallet:** https://webauth.com/

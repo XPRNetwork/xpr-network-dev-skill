@@ -35,13 +35,12 @@ async function getMarkets() {
   return data;
 }
 
-// Response includes:
-// - market_id
-// - base_token (e.g., XPR)
-// - quote_token (e.g., XUSDT)
-// - base_precision, quote_precision
-// - min_order_size
-// - status
+// Response shape (verified live):
+// - market_id, symbol (e.g. "XPR_XMD"), type
+// - bid_token / ask_token — objects: { code, contract, precision, multiplier }
+// - maker_fee, taker_fee
+// - order_min        (NOT "min_order_size")
+// - status_code      (NOT "status" — see Market Status Codes in metalx-dex.md)
 ```
 
 ### Get Order Book
@@ -100,14 +99,14 @@ const trades = await getTradeHistory('XPR_XUSDC', 20);
 ### Get User's Open Orders
 
 ```typescript
-async function getOpenOrders(account: string, marketId?: string) {
-  let url = `https://dex.api.mainnet.metalx.com/dex/v1/orders/open?account=${account}`;
-  if (marketId) {
-    url += `&market_id=${marketId}`;
-  }
-  const response = await fetch(url);
+async function getOpenOrders(account: string, marketId?: number) {
+  // NOTE: the API ignores a market_id query param (verified live — it returns
+  // all markets regardless). Filter client-side instead.
+  const response = await fetch(
+    `https://dex.api.mainnet.metalx.com/dex/v1/orders/open?account=${account}`
+  );
   const { data } = await response.json();
-  return data;
+  return marketId ? data.filter((o: any) => o.market_id === marketId) : data;
 }
 ```
 
@@ -1079,8 +1078,8 @@ Each hop incurs the pool's exchange fee, making multi-hop trades more expensive.
 
 ### Arbitrage Considerations
 
-- **Fees eat spread:** With 0.2% per hop, a round-trip (buy + sell) costs ~0.4%. Arbitrage only works if price discrepancy exceeds this.
-- **Triangular routes:** 3-hop routes cost ~0.6% minimum in fees. In practice, pools on XPR Network are efficient enough that profitable cycles are rare.
+- **Fees eat spread:** With ~0.3% total per hop (0.2% LP + 0.1% burns/grants — see *Exchange Fees* above), a round-trip (buy + sell) costs ~0.6%. Arbitrage only works if price discrepancy exceeds this.
+- **Triangular routes:** 3-hop routes cost ~0.9% minimum in fees. In practice, pools on XPR Network are efficient enough that profitable cycles are rare.
 - **Pool imbalances:** Large swaps can temporarily move pool prices. Watch for whale trades creating imbalances that revert over time.
 - **DEX vs Swap divergence:** The order book (MetalX DEX) and AMM pools can diverge in price. Check both before trading.
 

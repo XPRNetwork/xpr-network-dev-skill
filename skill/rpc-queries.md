@@ -4,27 +4,29 @@ This guide covers reading blockchain data from XPR Network using RPC calls and t
 
 ## RPC Endpoints
 
+Canonical, capability-annotated endpoint list lives in [`resources.md → RPC Endpoints`](./resources.md#rpc-endpoints) — verified per provider for both `/v1/chain/*` (RPC) and `/v2/history/*` (Hyperion). Quick reference:
+
 ### Mainnet
 
-| Endpoint | Provider |
-|----------|----------|
-| `https://proton.eosusa.io` | EOSUSA |
-| `https://proton.cryptolions.io` | CryptoLions |
+| Endpoint | Provider | RPC | Hyperion |
+|----------|----------|-----|----------|
+| `https://proton.eosusa.io` | EOSUSA | ✓ | ✓ |
+| `https://proton.protonuk.io` | ProtonUK | ✓ | ✓ |
+| `https://proton-api.eosiomadrid.io` | EOS Madrid | ✓ | ✓ |
+| `https://api-xprnetwork-main.saltant.io` | Saltant | ✓ | ✓ |
+| `https://xpr-mainnet-api.bloxprod.io` | BloxProd | ✓ | ✓ |
+| `https://proton-hyperion.luminaryvisn.com` | Luminary Vision | ✓ | ✓ |
+| `https://api.protonnz.com` | ProtonNZ | ✓ | — |
+| `https://proton.cryptolions.io` | CryptoLions | ✓ | — |
 
 ### Testnet
 
 | Endpoint | Provider |
 |----------|----------|
-| `https://tn1.protonnz.com` | protonnz |
+| `https://tn1.protonnz.com` | ProtonNZ |
+| `https://api-xprnetwork-test.saltant.io` | Saltant |
 
-### Hyperion (History API)
-
-| Network | Endpoint |
-|---------|----------|
-| Mainnet | `https://api-xprnetwork-main.saltant.io` |
-| Testnet | `https://api-xprnetwork-test.saltant.io` |
-
-Base path: `/v2/history/` or `/v2/state/`
+Hyperion base path: `/v2/history/` or `/v2/state/`
 
 ### Light API
 

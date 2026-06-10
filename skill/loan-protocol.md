@@ -39,7 +39,7 @@ When you supply assets, you receive L-tokens representing your share of the pool
 | XETH | LETH | 8 | `shares.loan` |
 | XMD | LXMD | 6 | `shares.loan` |
 | XUSDT | LUSDT | 6 | `shares.loan` |
-| XMT (METAL) | LXMT | 8 | `shares.loan` |
+| XMT (MTL — Metal DAO) | LXMT | 8 | `shares.loan` |
 | XXRP | LXRP | 6 | `shares.loan` |
 | XDOGE | LDOGE | 6 | `shares.loan` |
 | XHBAR | LHBAR | 6 | `shares.loan` |
@@ -75,7 +75,7 @@ Maximum borrowing power as percentage of collateral:
 | XBTC | 70% |
 | XETH | 70% |
 | XMD | 90% |
-| XMT (Metal) | 50% |
+| XMT (MTL — Metal DAO) | 50% |
 | XDOGE | 60% |
 | XADA | 60% |
 | XLTC | 60% |
