@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.3.1] — 2026-06-10
+
+Post-release consistency patch. Every fix sandbox-tested against the live API before landing; snippets were re-extracted from the edited docs and re-run as the final gate. ([PR #28](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/28))
+
+### Fixed
+
+- **`getOHLCV` + *Get OHLCV Chart*** — still passed `market_id` (HTTP 400). Verified contract: `symbol=` + `interval ∈ {1D, 240, 60, 15, 5}` + **ISO-date** `from`/`to` (epoch timestamps return HTTP 500). `metalx-dex.md`
+- **Stale arbitrage fee math** — "0.2%/hop, ~0.4% round-trip" contradicted the canonical 0.3% earlier in the same file. Now ~0.6% round-trip / ~0.9% triangular. `defi-trading.md`
+- **`/markets/all` response shape** — comment described non-existent fields; corrected to the live keys (`bid_token`/`ask_token` objects, `order_min`, `status_code`, `maker_fee`, `taker_fee`). `defi-trading.md`
+- **`getOpenOrders`** — implied server-side `market_id` filtering; the API ignores the param (verified live). Rewritten to filter client-side. `defi-trading.md`
+- **`rpc-queries.md` header endpoint tables** — listed 2 RPC providers / 1 Hyperion endpoint, contradicting the etiquette section in the same file. Now the full 8-row capability table.
+- **`XMT (METAL)` conflation** — two `loan-protocol.md` rows now read `XMT (MTL — Metal DAO)`.
+- Two broken heading anchors (etiquette slug in `resources.md`; `#token-contracts` → `#token-contract-registry` in `alcor-dex.md`); `jq` snippet `status` → `status_code`; CHANGELOG triage arithmetic; "Metal X" → "MetalX" and "orderbook" → "order book" spellings; self-contained `RAW_MEMO` example in `alcor-dex.md`.
+
+---
+
 ## [2.3.0] — 2026-05-16
 
 This release closes the post-audit triage and ships the canonical reference tables, agent-ops hygiene, and a Hyperion etiquette section.

@@ -46,7 +46,7 @@ Your assistant will see the new content on its next conversation. No reinstall.
 ./scripts/agent-bootstrap.sh
 ```
 
-> **Current release: v2.3.0 (May 2026).** Full release notes and version history in [`CHANGELOG.md`](./CHANGELOG.md).
+> **Current release: v2.3.1 (June 2026).** Full release notes and version history in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ### Method 1: Manual symlink (personal skill)
 
