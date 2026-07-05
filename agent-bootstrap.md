@@ -17,7 +17,7 @@ If you're an *individual developer* installing this skill into Claude Code on yo
 
 | Layer | Source | What it gives the agent |
 |---|---|---|
-| **Capabilities** (do things) | [`@xpr-agents/openclaw`](https://github.com/XPRNetwork/xpr-agents) npm plugin | 55 MCP tools across the 4 contracts + A2A + indexer; 12 built-in skills |
+| **Capabilities** (do things) | [`@xpr-agents/openclaw`](https://github.com/XPRNetwork/xpr-agents) npm plugin | 72 MCP tools across the 4 contracts + A2A + indexer; 13 bundled skills |
 | **Knowledge** (do them right) | This repo (`xpr-network-dev-skill`) | Fee math, deposit-first-or-die warnings, memo gotchas, action-name corrections — every fix this repo has shipped is a real failure mode somebody hit |
 
 Without the plugin, the agent has knowledge but no way to act. Without the skill, the agent has tools but will copy-paste the dangerous patterns this repo spent months correcting. Use both.
@@ -30,7 +30,13 @@ These four steps work on any OpenClaw runtime. Pinata-specific notes are in the 
 
 ### Step 1 — Install runtime capabilities
 
-Inside the agent's workspace:
+On an OpenClaw runtime with the plugin manager, the primary install path is:
+
+```bash
+openclaw plugins install @xpr-agents/openclaw
+```
+
+That registers all 72 MCP tools and auto-loads the 13 bundled skills (pre-built in the npm tarball since v0.4.0 — the boot log prints `Plugin loaded: 72 tools`). If the plugin manager isn't available, or you're integrating as a library, npm-direct works the same as before:
 
 ```bash
 npm install @xpr-agents/openclaw @xpr-agents/sdk @proton/js
@@ -84,6 +90,16 @@ Notes:
 Every other approach (env-var private key passed to `JsSignatureProvider`, `.env` file, secrets-manager-then-zero) leaves the key reachable from the agent's **process memory at signing time** — every tool call, every log line, every paste into the model's context window is a potential leak surface. The CLI keychain pattern shells signing out to a separate `proton transaction:push` process, so the key bytes never enter the Node.js process the agent runs in.
 
 The non-interactive path (2b) weakens this slightly at *provisioning* time — the key briefly passes through the script's env / pipe / argv — but the *runtime* property still holds: once provisioning is done, the agent process never sees the key again. That tradeoff is what makes managed-console deployment viable. See `skill/backend-patterns.md` → *Security: Key Isolation* for the full rationale.
+
+#### Optional hardening: delegate `owner` to a human account
+
+Since `@xpr-agents/openclaw` v0.5.x the package ships an interactive script that moves the agent account's **`owner` permission to a human-controlled account**, so even a full compromise of the agent's `active` key can't rotate keys or take over the account — recovery stays with you:
+
+```bash
+npx xpr-agents-setup-security   # requires a real TTY; run from your own terminal, not the agent console
+```
+
+Do this once after Step 2, from your machine (not the agent's). The agent keeps signing day-to-day actions with its `active` key via the keychain; you keep the `owner` escape hatch.
 
 ### Step 3 — Install the dev knowledge
 

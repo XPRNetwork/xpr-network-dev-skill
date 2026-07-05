@@ -1,7 +1,7 @@
 ---
 name: xpr-network-dev
 description: Comprehensive knowledge for XPR Network blockchain development - smart contracts, CLI, web SDK, DeFi, NFTs, and infrastructure
-version: 2.3.1
+version: 2.3.2
 author: XPR Network Community
 repository: https://github.com/XPRNetwork/xpr-network-dev-skill
 ---

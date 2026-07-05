@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.3.2] — 2026-07-06
+
+Monthly drift audit. Full re-verification against live mainnet came back clean — all 28 cited accounts, all 18 MetalX DEX markets, all fee values, all 6 Hyperion endpoints, and all canonical MetalX docs claims held. Fixes below are the only drift found.
+
+### Fixed
+
+- **`@xpr-agents/openclaw` tool/skill counts** — docs said "55 MCP tools + 12 built-in skills"; the package registers **72 tools** and bundles **13 skills** (verified by counting `registerTool` calls in `dist/tools/` and the `openclaw.plugin.json` skills manifest at v0.5.2 — the count was inherited from a stale upstream README and was wrong even at original verification). `agent-bootstrap.md`, `README.md`
+- **Identity-verification URL** — `identity.metallicus.com` → canonical `identity.metalx.com` (per docs.metalx.com; both resolve, aligned with canonical). 4 sites.
+- **LOAN circulating supply** — refreshed ~113.3B (May 2026) → ~113.7B (July 2026).
+
+### Added
+
+- **`openclaw plugins install @xpr-agents/openclaw`** documented as the primary install path in `agent-bootstrap.md` Step 1 (skills ship pre-built in the tarball since v0.4.0); npm-direct remains supported.
+- **`npx xpr-agents-setup-security`** — new optional-hardening subsection in `agent-bootstrap.md` Step 2: the v0.5.x script that delegates the agent account's `owner` permission to a human-controlled account, so a compromised `active` key can't take over the account.
+
+### Re-verified unchanged (openclaw 0.3.0 → 0.5.2)
+
+`createCliSession` signature and `{transaction_id, processed}` return shape • no `broadcast:false` path • signing shells out to `proton transaction:push` • `XPR_PRIVATE_KEY` refuse-to-start guard • export surface • `@xpr-agents/sdk@0.2.6` `listAgents` shape.
+
+---
+
 ## [2.3.1] — 2026-06-10
 
 Post-release consistency patch. Every fix sandbox-tested against the live API before landing; snippets were re-extracted from the edited docs and re-run as the final gate. ([PR #28](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/28))

@@ -982,7 +982,7 @@ npm run bot
 - Minimum order: $1 or 1 XMD
 - Bot auto-replaces filled orders
 - **For production:** migrate to the proton CLI keychain pattern — see [`backend-patterns.md`](./backend-patterns.md#security-key-isolation) and [`agent-bootstrap.md`](../agent-bootstrap.md) Step 2
-- Verify identity at https://identity.metallicus.com if needed
+- Verify identity at https://identity.metalx.com if needed
 
 ---
 
@@ -1012,5 +1012,5 @@ npm run bot
 - **WebAuth Wallet:** https://webauth.com/
 - **DEX Bot:** https://github.com/XPRNetwork/dex-bot
 - **LOAN Protocol:** https://lending.docs.metalx.com
-- **Identity Verification:** https://identity.metallicus.com
+- **Identity Verification:** https://identity.metalx.com
 - **Support:** https://help.xprnetwork.org/

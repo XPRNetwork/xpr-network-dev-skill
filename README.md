@@ -46,7 +46,7 @@ Your assistant will see the new content on its next conversation. No reinstall.
 ./scripts/agent-bootstrap.sh
 ```
 
-> **Current release: v2.3.1 (June 2026).** Full release notes and version history in [`CHANGELOG.md`](./CHANGELOG.md).
+> **Current release: v2.3.2 (July 2026).** Full release notes and version history in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ### Method 1: Manual symlink (personal skill)
 
@@ -264,7 +264,7 @@ Claude will load specialized modules on demand based on your queries.
 ### Server-Side Agents
 
 - Deploying an autonomous XPR Network agent on Pinata (hosted OpenClaw) or self-hosted runtimes — see [`agent-bootstrap.md`](./agent-bootstrap.md)
-- Capabilities layer: 55 MCP tools across identity, reputation, validation, escrow, A2A via `@xpr-agents/openclaw`
+- Capabilities layer: 72 MCP tools across identity, reputation, validation, escrow, A2A via `@xpr-agents/openclaw`
 - Knowledge layer: this skill, loaded into the agent workspace as on-demand reference docs
 - Idempotent provisioning script ([`scripts/agent-bootstrap.sh`](./scripts/agent-bootstrap.sh)) with PATH fixup, key-format validation, read-only smoke test
 - Non-interactive `proton key:add` for managed consoles (no TTY)
