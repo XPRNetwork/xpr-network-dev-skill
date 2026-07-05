@@ -13,8 +13,11 @@ Monthly drift audit. Full re-verification against live mainnet came back clean �
 ### Fixed
 
 - **`@xpr-agents/openclaw` tool/skill counts** — docs said "55 MCP tools + 12 built-in skills"; the package registers **72 tools** and bundles **13 skills** (verified by counting `registerTool` calls in `dist/tools/` and the `openclaw.plugin.json` skills manifest at v0.5.2 — the count was inherited from a stale upstream README and was wrong even at original verification). `agent-bootstrap.md`, `README.md`
-- **Identity-verification URL** — `identity.metallicus.com` → canonical `identity.metalx.com` (per docs.metalx.com; both resolve, aligned with canonical). 4 sites.
 - **LOAN circulating supply** — refreshed ~113.3B (May 2026) → ~113.7B (July 2026).
+
+### Verified, deliberately NOT changed
+
+- **Identity-verification URL stays `identity.metallicus.com`** — the MetalX FAQ links `identity.metalx.com`, but that URL 301-redirects to `identity.metallicus.com`; the skill already cited the terminal destination. Recorded here so future audits don't "align" it to the redirect.
 
 ### Added
 

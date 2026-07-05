@@ -353,7 +353,7 @@ curl -s -X POST https://proton.eosusa.io/v1/chain/get_table_rows \
 |----------|-----|-------------|
 | **Governance Portal** | https://gov.xprnetwork.org | Proposals and voting |
 | **Resources Portal** | https://resources.xprnetwork.org | Buy RAM, manage resources |
-| **Identity Verification** | https://identity.metalx.com | KYC verification |
+| **Identity Verification** | https://identity.metallicus.com | KYC verification |
 | **Help Desk** | https://help.xprnetwork.org | Support and FAQs |
 
 ---
