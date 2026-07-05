@@ -324,7 +324,7 @@ If you're touching a reference module, also include the curl / RPC call you used
 **Agent infrastructure**
 
 - **xpr-agents repo**: https://github.com/XPRNetwork/xpr-agents — `@xpr-agents/openclaw` plugin, `@xpr-agents/sdk`, agent-runner starter kit
-- **Agent registry (live)**: https://agents.protonnz.com
+- **Agent registry (live)**: https://xpragents.com
 - **Pinata Agents** (hosted OpenClaw): https://docs.pinata.cloud/agents/overview.md
 
 ## License

@@ -14,6 +14,7 @@ Monthly drift audit. Full re-verification against live mainnet came back clean �
 
 - **`@xpr-agents/openclaw` tool/skill counts** — docs said "55 MCP tools + 12 built-in skills"; the package registers **72 tools** and bundles **13 skills** (verified by counting `registerTool` calls in `dist/tools/` and the `openclaw.plugin.json` skills manifest at v0.5.2 — the count was inherited from a stale upstream README and was wrong even at original verification). `agent-bootstrap.md`, `README.md`
 - **LOAN circulating supply** — refreshed ~113.3B (May 2026) → ~113.7B (July 2026).
+- **Agent registry URL** — `agents.protonnz.com` → `xpragents.com` (old domain now 301-redirects there; cite the terminal destination). `README.md`
 
 ### Verified, deliberately NOT changed
 
