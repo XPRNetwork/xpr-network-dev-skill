@@ -9,12 +9,14 @@ This guide covers account creation, permission management, and multisig operatio
 | Rule | Description |
 |------|-------------|
 | Length | 1-12 characters |
-| Characters | Lowercase a-z and digits 1-5 only |
-| No dots | Unlike EOS, XPR accounts cannot contain dots |
+| Characters | Lowercase `a-z`, digits `1-5`, and `.` (the standard Antelope name charset — no `0`, `6-9`, `_`, `-`, or uppercase) |
+| Dots | **Dotted names exist and are valid to reference** — `eosio.token`, `eosio.proton`, `xmd.token`, `xmd.treasury`, `loan.token`, `lending.loan`, `shares.loan`, `eosio.msig`. They are system/premium accounts. **User-registered accounts** (via WebAuth or `newaccount` through the free-account flow) are dot-free. |
 | No uppercase | Must be entirely lowercase |
 
-Valid: `alice`, `mycontract`, `game123`, `x`
-Invalid: `Alice`, `my.contract`, `game_123`, `user@home`
+Valid to reference: `alice`, `mycontract`, `game123`, `x`, `eosio.token`, `xmd.token`
+Invalid (fail name parsing): `Alice`, `game_123`, `user@home`, `token0`, `abc6`
+
+> **Validation gotcha.** If you write an account-name validator, use the Antelope charset `^[a-z1-5.]{1,12}$` (plus the rule that a name can't end in `.` and dots can't be consecutive). A regex that rejects dots will flag the canonical `xmd.token` and `eosio.token` contracts as malformed. Restrict to dot-free only when validating *new user registrations*, not references to existing accounts.
 
 ### Account Structure
 

@@ -443,13 +443,12 @@ curl -s -X POST https://proton.eosusa.io/v1/chain/get_table_rows \
   -d '{"code":"oracles","scope":"oracles","table":"data","lower_bound":3,"upper_bound":3,"limit":1,"json":true}'
 ```
 
-Known oracle feed indices:
+Oracle feed indices for LOAN collateral assets (excerpt — the **canonical full table** with liveness notes is in [`oracles-randomness.md`](./oracles-randomness.md#available-price-feeds)):
 
 | Index | Asset |
 |-------|-------|
 | 3 | XPR/USD |
 | 4 | BTC/USD |
-| 5 | USDC/USD |
 | 6 | MTL/USD (XMT) |
 | 7 | ETH/USD |
 | 8 | DOGE/USD |
@@ -460,6 +459,8 @@ Known oracle feed indices:
 | 21 | HBAR/USD |
 | 22 | ADA/USD |
 | 23 | XLM/USD |
+
+> Index 5 (USDC/USD) and 12 (XMD/USD) are **dormant** (no updates in 1+ years) — use 9 (USDT/USD) as the dollar reference.
 
 ---
 

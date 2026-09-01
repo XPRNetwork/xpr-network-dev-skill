@@ -15,7 +15,7 @@ XPR Network is a fast, gas-free blockchain with WebAuthn wallet support. Key fea
 - **WebAuthn wallets** - Login with Face ID, fingerprint, or security keys
 - **4000+ TPS** - Fast block times (0.5s)
 - **EOS-based** - Uses EOSIO technology with AssemblyScript smart contracts
-- **Human-readable accounts** - 12 character account names instead of hex addresses
+- **Human-readable accounts** - up to 12-character account names instead of hex addresses
 
 ## Installation
 
@@ -46,7 +46,7 @@ Your assistant will see the new content on its next conversation. No reinstall.
 ./scripts/agent-bootstrap.sh
 ```
 
-> **Current release: v2.3.2 (July 2026).** Full release notes and version history in [`CHANGELOG.md`](./CHANGELOG.md).
+> **Current release: v2.3.3 (September 2026).** Full release notes and version history in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ### Method 1: Manual symlink (personal skill)
 

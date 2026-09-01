@@ -8,23 +8,37 @@ XPR Network provides on-chain price feeds through the `oracles` contract for DeF
 
 ### Available Price Feeds
 
-| Index | Pair |
-|-------|------|
-| 3 | XPR/USD |
-| 4 | BTC/USD |
-| 5 | USDC/USD |
-| 6 | MTL/USD |
-| 7 | ETH/USD |
-| 8 | DOGE/USD |
-| 9 | USDT/USD |
-| 12 | XMD/USD |
-| 13 | BUSD/USD |
-| 16 | LTC/USD |
-| 18 | XRP/USD |
-| 19 | SOL/USD |
-| 21 | HBAR/USD |
-| 22 | ADA/USD |
-| 23 | XLM/USD |
+**This is the canonical feed table for the skill** — `rpc-queries.md`, `resources.md`, and `loan-protocol.md` carry short excerpts and point here. Liveness verified 2026-09-01 against `oracles::feed` actions on Hyperion (the `data.points` array is per-provider and can look stale even for live feeds — check feed actions, not points).
+
+| Index | Pair | Notes |
+|-------|------|-------|
+| 2 | XPR/BTC | 14-day average — updates infrequently by design |
+| 3 | XPR/USD | 10-min average; the primary XPR price feed |
+| 4 | BTC/USD | |
+| 6 | MTL/USD | Priced from XMT (the XPR Network representation of MTL) |
+| 7 | ETH/USD | |
+| 8 | DOGE/USD | |
+| 9 | USDT/USD | Live dollar reference |
+| 13 | BUSD/USD | still updated |
+| 14 | PAX/USD | |
+| 15 | TUSD/USD | |
+| 16 | LTC/USD | |
+| 17 | PYUSD/USD | |
+| 18 | XRP/USD | |
+| 19 | SOL/USD | |
+| 21 | HBAR/USD | |
+| 22 | ADA/USD | |
+| 23 | XLM/USD | |
+| 24 | SNIPS/USD | |
+| 25 | AVAX/USD | |
+
+> **Dormant indices — do not use:** `5` (USDC/USD), `10`, `11`, `12` (XMD/USD), `20` exist in the `feeds` table but have received no updates for 1+ years. Index 12 is the trap: XMD is a live token but its oracle feed is dead — use `9` (USDT/USD) as the dollar reference instead. Query the live set yourself:
+>
+> ```bash
+> curl -s -X POST https://proton.eosusa.io/v1/chain/get_table_rows \
+>   -H 'Content-Type: application/json' \
+>   -d '{"code":"oracles","scope":"oracles","table":"feeds","limit":100,"json":true}'
+> ```
 
 ### Query Oracle Price
 

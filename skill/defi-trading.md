@@ -261,8 +261,11 @@ async function depositToDex(account: string, quantity: string, tokenContract: st
       from: account,
       to: 'dex',
       quantity,
-      // WARNING: memo MUST be empty string. Using 'deposit' or other non-empty
-      // memo will cause the transfer to be treated as a regular transfer, not a DEX deposit.
+      // WARNING: memo MUST be empty string. A non-empty memo (e.g. 'deposit') is
+      // accepted as a plain token transfer INTO the dex account but is NOT credited
+      // as a DEX deposit — no `balances` row, so withdraw/withdrawall cannot return
+      // it. Recovery is only a discretionary manual refund by MetalX operators.
+      // Full explanation: metalx-dex.md → "CRITICAL: DEX Token Deposits".
       memo: ''
     }
   }];
