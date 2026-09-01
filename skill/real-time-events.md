@@ -16,147 +16,133 @@ XPR Network provides several ways to get real-time updates:
 
 ## Hyperion Streaming API
 
-Hyperion provides WebSocket-based streaming for real-time action and delta notifications.
+Hyperion streams actions and table deltas over **socket.io** (not a raw WebSocket). Every public XPR Network Hyperion advertises it (`/v2/health` → `"streaming":{"enable":true,"traces":true,"deltas":true}`), but as of **2026-09-01** the reality on the public endpoints is:
 
-### Endpoint
+| Endpoint | Connect via socket.io `path: '/stream'` | Live/replay data delivered in tests |
+|---|---|---|
+| `https://proton.eosusa.io` | ✅ connects; receives `handshake` + `lib_update`; `streamActions` requests accepted (`status: OK`) | ❌ none in 60–90 s windows (live tail or historical replay) |
+| `https://api-xprnetwork-main.saltant.io` | ❌ 404 — proxy doesn't expose the socket mount | — |
+| `https://proton.protonuk.io` | ❌ 403 | — |
+
+> **Treat public streaming as best-effort, not a dependency.** The connection layer below is verified; delivery on the shared endpoints is not. For production, either poll politely (next section, and the etiquette rules in `rpc-queries.md`) or run your own Hyperion and stream from that. If you do get the public stream working, please open an issue with the recipe.
+
+### Why the obvious approaches fail
+
+The socket.io server is mounted at **`/stream`** on the HTTPS origin. So:
 
 ```
-wss://proton.eosusa.io/stream
+wss://proton.eosusa.io/stream                       ❌ raw WebSocket — no socket.io handshake, fails
+https://proton.eosusa.io/socket.io/?EIO=4           ❌ default socket.io path — 404
+https://proton.eosusa.io/stream/socket.io/?EIO=4    ❌ doubled path — 404
+io('https://proton.eosusa.io', { path: '/stream' })  ✅ correct
 ```
 
-### Stream Actions
+You also need `socket.io-client` (v4) — a plain `ws` client cannot speak the protocol.
 
-Listen for specific contract actions in real-time:
+### Recommended: the official client
+
+`@eosrio/hyperion-stream-client` handles the path, transports, reconnection, and the request/ack protocol:
+
+```bash
+npm install @eosrio/hyperion-stream-client
+```
 
 ```typescript
-import WebSocket from 'ws';
+import { HyperionStreamClient } from '@eosrio/hyperion-stream-client';
 
-interface StreamMessage {
-  type: 'action' | 'delta';
-  content: any;
-}
+// Pass the HTTPS API origin — the client appends /stream itself.
+const client = new HyperionStreamClient({ endpoint: 'https://proton.eosusa.io' });
 
-class HyperionStream {
-  private ws: WebSocket | null = null;
-  private endpoint = 'wss://proton.eosusa.io/stream';
+client.on('error', (e) => console.error('stream error:', e));
+await client.connect();
 
-  connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(this.endpoint);
-
-      this.ws.on('open', () => {
-        console.log('Connected to Hyperion stream');
-        resolve();
-      });
-
-      this.ws.on('error', (error) => {
-        console.error('Stream error:', error);
-        reject(error);
-      });
-
-      this.ws.on('close', () => {
-        console.log('Stream disconnected');
-        this.reconnect();
-      });
-    });
-  }
-
-  // Subscribe to contract actions
-  subscribeActions(contract: string, action: string, callback: (data: any) => void): void {
-    if (!this.ws) throw new Error('Not connected');
-
-    // Send subscription request
-    this.ws.send(JSON.stringify({
-      type: 'action_stream',
-      req_id: `${contract}:${action}`,
-      data: {
-        contract,
-        action,
-        start_from: 'head'  // Start from current block
-      }
-    }));
-
-    // Handle messages
-    this.ws.on('message', (data: string) => {
-      const message: StreamMessage = JSON.parse(data);
-      if (message.type === 'action') {
-        callback(message.content);
-      }
-    });
-  }
-
-  // Subscribe to table deltas
-  subscribeDeltas(contract: string, table: string, callback: (data: any) => void): void {
-    if (!this.ws) throw new Error('Not connected');
-
-    this.ws.send(JSON.stringify({
-      type: 'delta_stream',
-      req_id: `${contract}:${table}`,
-      data: {
-        code: contract,
-        table,
-        start_from: 'head'
-      }
-    }));
-
-    this.ws.on('message', (data: string) => {
-      const message: StreamMessage = JSON.parse(data);
-      if (message.type === 'delta') {
-        callback(message.content);
-      }
-    });
-  }
-
-  private reconnect(): void {
-    setTimeout(() => {
-      console.log('Reconnecting...');
-      this.connect();
-    }, 5000);
-  }
-
-  disconnect(): void {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-  }
-}
-
-// Usage
-const stream = new HyperionStream();
-await stream.connect();
-
-// Listen for all transfers
-stream.subscribeActions('eosio.token', 'transfer', (action) => {
-  console.log('Transfer:', action.data);
-  // { from: 'alice', to: 'bob', quantity: '100.0000 XPR', memo: 'Payment' }
+// Hyperion rejects unfiltered requests with "request too broad" — you MUST
+// narrow by `account` (the notified account) or otherwise be specific.
+const transfers = await client.streamActions({
+  contract: 'eosio.token',
+  action: 'transfer',
+  account: 'dex',          // e.g. every transfer touching the dex contract
+  start_from: 0,           // 0 = live tail; a block number = replay from there
+  read_until: 0,           // 0 = keep streaming
+  filters: [],             // optional field filters, e.g. [{ field: 'data.to', value: 'dex' }]
 });
 
-// Listen for NFT mints
-stream.subscribeActions('atomicassets', 'mintasset', (action) => {
-  console.log('NFT minted:', action.data);
+transfers.on('data', (msg) => {
+  const { act, block_num } = msg.content;
+  console.log(block_num, act.data);   // { from, to, quantity, memo }
 });
+
+// Table deltas work the same way
+const deltas = await client.streamDeltas({
+  code: 'oracles', table: 'data', scope: 'oracles', payer: '',
+  start_from: 0, read_until: 0,
+});
+deltas.on('data', (msg) => console.log('oracle update', msg.content));
 ```
 
-### Stream Table Deltas
+### Raw `socket.io-client` (if you can't use the official client)
 
-Monitor table changes in real-time:
+Connection recipe that is verified to reach `handshake` / `lib_update` on eosusa:
 
 ```typescript
-// Watch for user profile changes
-stream.subscribeDeltas('eosio.proton', 'usersinfo', (delta) => {
-  if (delta.present) {
-    console.log('Profile updated:', delta.data);
-  } else {
-    console.log('Profile removed:', delta.primary_key);
-  }
+import { io } from 'socket.io-client';
+
+const socket = io('https://proton.eosusa.io', {
+  path: '/stream',              // the mount point — NOT the default /socket.io
+  transports: ['websocket'],
+  reconnection: true,
 });
 
-// Watch for oracle price updates
-stream.subscribeDeltas('oracles', 'data', (delta) => {
-  console.log('Price updated:', delta.data);
-});
+socket.on('connect',       () => console.log('connected', socket.id));
+socket.on('handshake',     (m) => console.log('handshake', m));   // { event: 'handshake', chain: 'proton' }
+socket.on('lib_update',    (m) => console.log('LIB', m.block_num));
+socket.on('fork_event',    (m) => console.warn('fork', m));
+socket.on('message',       (m) => console.log('stream message', m));
+socket.on('connect_error', (e) => console.error(e.message));
 ```
+
+Stream requests are sent as socket.io events with acknowledgements (`action_stream_request`, `delta_stream_request`, `cancel_stream_request`) and each carries a server-assigned `reqUUID`; replies arrive on `message`. The exact payloads are an implementation detail of the client library — use it rather than hand-rolling unless you have a reason.
+
+### Thin adapter used by the examples in this doc
+
+The notification-service, database-sync, and webhook examples further down use this small callback-style wrapper over the official client, so they read the same way regardless of transport details. Note that `account` is **required** for action streams — Hyperion rejects unscoped requests as "too broad".
+
+```typescript
+import { HyperionStreamClient } from '@eosrio/hyperion-stream-client';
+
+export class HyperionStream {
+  private client: HyperionStreamClient;
+
+  constructor(endpoint = 'https://proton.eosusa.io') {
+    this.client = new HyperionStreamClient({ endpoint });
+    this.client.on('error', (e) => console.error('hyperion stream error:', e));
+  }
+
+  connect(): Promise<void> { return this.client.connect(); }
+  disconnect(): void { this.client.disconnect(); }
+
+  /** Stream `contract::action` traces where `account` is notified. Callback gets the action with trx_id/block_num/@timestamp attached. */
+  async subscribeActions(contract: string, action: string, account: string, cb: (action: any) => void) {
+    const stream = await this.client.streamActions({ contract, action, account, start_from: 0, read_until: 0, filters: [] });
+    stream.on('data', (msg: any) => {
+      const c = msg.content;
+      cb({ ...c.act, trx_id: c.trx_id, block_num: c.block_num, '@timestamp': c['@timestamp'] });
+    });
+    return stream;
+  }
+
+  /** Stream table deltas for `code::table` (scope defaults to the contract). Callback gets { present, data, primary_key, ... }. */
+  async subscribeDeltas(code: string, table: string, cb: (delta: any) => void, scope: string = code) {
+    const stream = await this.client.streamDeltas({ code, table, scope, payer: '', start_from: 0, read_until: 0 });
+    stream.on('data', (msg: any) => cb(msg.content));
+    return stream;
+  }
+}
+```
+
+### Self-hosting note
+
+If you run your own Hyperion, the socket.io server listens on a separate stream port that must be proxied to `/stream` with WebSocket upgrade headers (`Upgrade` / `Connection: upgrade`, long `proxy_read_timeout`). Cloudflare's orange-cloud proxy interferes with long-lived stream sockets — use DNS-only for the Hyperion hostname.
 
 ---
 
@@ -319,8 +305,8 @@ challengePoller.start(
 Build a notification service that watches the chain and notifies users:
 
 ```typescript
-import WebSocket from 'ws';
 import { Server } from 'socket.io';
+// HyperionStream = the thin adapter defined in the streaming section above
 
 interface Subscription {
   userId: string;
@@ -340,14 +326,22 @@ class NotificationService {
 
   async start(): Promise<void> {
     await this.hyperion.connect();
-
-    // Subscribe to common actions
-    this.watchTransfers();
-    this.watchNFTs();
+    // Streams are opened per watched account in subscribeUser() — Hyperion
+    // requires an `account` on action streams, and per-account is the right
+    // granularity for notifications anyway.
   }
 
-  private watchTransfers(): void {
-    this.hyperion.subscribeActions('eosio.token', 'transfer', (action) => {
+  private watched = new Set<string>();
+
+  private watchAccount(account: string): void {
+    if (this.watched.has(account)) return;
+    this.watched.add(account);
+    this.watchTransfers(account);
+    this.watchNFTs(account);
+  }
+
+  private watchTransfers(account: string): void {
+    this.hyperion.subscribeActions('eosio.token', 'transfer', account, (action) => {
       const { from, to, quantity, memo } = action.data;
 
       // Notify recipient
@@ -370,8 +364,8 @@ class NotificationService {
     });
   }
 
-  private watchNFTs(): void {
-    this.hyperion.subscribeActions('atomicassets', 'transfer', (action) => {
+  private watchNFTs(account: string): void {
+    this.hyperion.subscribeActions('atomicassets', 'transfer', account, (action) => {
       const { from, to, asset_ids } = action.data;
 
       this.notifyAccount(to, {
@@ -393,6 +387,7 @@ class NotificationService {
   // Called when user connects
   subscribeUser(socketId: string, account: string): void {
     this.io.sockets.sockets.get(socketId)?.join(`account:${account}`);
+    this.watchAccount(account);
   }
 }
 
@@ -570,7 +565,9 @@ class BlockchainSync {
   private pool: Pool;
   private stream: HyperionStream;
 
-  constructor(dbConfig: any) {
+  // `watchAccount`: transfers touching this account (Hyperion requires a scope;
+  // to index *all* transfers, run your own Hyperion and stream from it)
+  constructor(dbConfig: any, private watchAccount: string) {
     this.pool = new Pool(dbConfig);
     this.stream = new HyperionStream();
   }
@@ -579,7 +576,7 @@ class BlockchainSync {
     await this.stream.connect();
 
     // Sync transfers
-    this.stream.subscribeActions('eosio.token', 'transfer', async (action) => {
+    this.stream.subscribeActions('eosio.token', 'transfer', this.watchAccount, async (action) => {
       await this.pool.query(
         `INSERT INTO transfers (tx_id, from_account, to_account, quantity, memo, timestamp)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -678,8 +675,8 @@ dispatcher.register({
   secret: 'my-webhook-secret'
 });
 
-// In your stream handler:
-stream.subscribeActions('eosio.token', 'transfer', (action) => {
+// In your stream handler (one stream per merchant account):
+stream.subscribeActions('eosio.token', 'transfer', 'merchant', (action) => {
   dispatcher.dispatch('transfer_received', action.data.to, action.data);
 });
 ```
@@ -688,21 +685,17 @@ stream.subscribeActions('eosio.token', 'transfer', (action) => {
 
 ## Quick Reference
 
-### Hyperion Stream Events
+### Hyperion Stream Requests (via `@eosrio/hyperion-stream-client`)
 
 ```typescript
-// Action subscription
-{
-  type: 'action_stream',
-  data: { contract: 'eosio.token', action: 'transfer' }
-}
+// Action stream — `account` is required in practice (server rejects broad requests)
+client.streamActions({ contract: 'eosio.token', action: 'transfer', account: 'dex', start_from: 0, read_until: 0, filters: [] });
 
-// Delta subscription
-{
-  type: 'delta_stream',
-  data: { code: 'pricebattle', table: 'challenges' }
-}
+// Delta stream
+client.streamDeltas({ code: 'pricebattle', table: 'challenges', scope: 'pricebattle', payer: '', start_from: 0, read_until: 0 });
 ```
+
+Connection: `io('https://<hyperion>', { path: '/stream', transports: ['websocket'] })` — socket.io, not raw WebSocket. Public-endpoint delivery is unverified; see the streaming section.
 
 ### Common Filters
 
@@ -723,9 +716,9 @@ stream.subscribeActions('eosio.token', 'transfer', (action) => {
 
 ### Performance Tips
 
-1. **Use streaming over polling** when possible
+1. **Prefer streaming over polling** where it actually delivers — on the public endpoints today that's unverified, so default to polite polling (see `rpc-queries.md` → Endpoint Etiquette) and stream from your own Hyperion when you need it
 2. **Filter server-side** - don't fetch everything and filter client-side
-3. **Implement reconnection logic** for WebSocket connections
+3. **Implement reconnection logic** for socket.io connections (the official client does this for you)
 4. **Use database indexes** for synced blockchain data
 5. **Batch notifications** to avoid overwhelming users
 

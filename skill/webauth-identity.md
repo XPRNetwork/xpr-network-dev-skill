@@ -31,7 +31,7 @@ interface UserInfo {
   acc: string;           // Account name
   name: string;          // Display name
   avatar: string;        // Avatar URL or base64
-  verified: boolean;     // Blue checkmark
+  verified: boolean;     // Opt-in display checkmark set by a verifier account — NOT a KYC summary (fully KYC'd accounts routinely have verified=false)
   date: number;          // Registration date
   verifiedon: number;    // Verification timestamp
   verifier: string;      // Account that verified
@@ -43,7 +43,7 @@ interface UserInfo {
 
 interface KYCProvider {
   kyc_provider: string;  // Provider account
-  kyc_level: string;     // Verification level
+  kyc_level: string;     // Comma-separated CLAIM list, e.g. "metal.kyc:address,metal.kyc:selfie,..." — NOT a numeric level; parseInt() returns NaN
   kyc_date: number;      // Verification date
 }
 ```
@@ -69,22 +69,25 @@ async function getUserProfile(account: string) {
   "acc": "alice",
   "name": "Alice",
   "avatar": "https://gateway.pinata.cloud/ipfs/Qm...",
-  "verified": true,
+  "verified": false,
   "date": 1704567890,
-  "verifiedon": 1705123456,
-  "verifier": "eosio.proton",
+  "verifiedon": 0,
+  "verifier": "",
   "raccs": [],
   "aacts": [],
   "ac": [],
   "kyc": [
     {
-      "kyc_provider": "eosio.proton",
-      "kyc_level": "2",
+      "kyc_provider": "metal.kyc",
+      "kyc_level": "metal.kyc:address,metal.kyc:birthdate,metal.kyc:selfie,metal.kyc:frontofid,metal.kyc:backofid,metal.kyc:firstname,metal.kyc:lastname",
       "kyc_date": 1705123456
     }
   ]
 }
 ```
+
+This is the real shape on mainnet (read from `eosio.proton::usersinfo`, 2026-09): `kyc_level` is a **comma-separated list of claims** issued by the provider, and `verified` is independent of KYC — accounts with a full 7-claim KYC record commonly have `verified: false`.
+
 
 ### Check KYC Status
 
@@ -98,26 +101,48 @@ async function isKYCVerified(account: string): Promise<boolean> {
   return profile.kyc && profile.kyc.length > 0;
 }
 
-async function getKYCLevel(account: string): Promise<number> {
+/** All KYC claims across providers, e.g. ["metal.kyc:address", "metal.kyc:selfie", ...] */
+async function getKYCClaims(account: string): Promise<string[]> {
   const profile = await getUserProfile(account);
+  if (!profile?.kyc?.length) return [];
+  return profile.kyc.flatMap(k =>
+    k.kyc_level.split(',').map(c => c.trim()).filter(Boolean)
+  );
+}
 
-  if (!profile || !profile.kyc || profile.kyc.length === 0) {
-    return 0;  // Not KYC'd
-  }
+/** Check for a specific claim, e.g. hasKYCClaim(acct, 'metal.kyc:selfie') */
+async function hasKYCClaim(account: string, claim: string): Promise<boolean> {
+  return (await getKYCClaims(account)).includes(claim);
+}
 
-  // Get highest level
-  return Math.max(...profile.kyc.map(k => parseInt(k.kyc_level)));
+/**
+ * DERIVED tier — there is no numeric level on chain. This is one reasonable
+ * mapping from claim count; define your own thresholds for your risk model.
+ */
+async function getKYCTier(account: string): Promise<0 | 1 | 2> {
+  const claims = await getKYCClaims(account);
+  const hasId = claims.some(c => /frontofid|backofid/.test(c));
+  if (claims.length === 0) return 0;          // no KYC
+  if (hasId && claims.length >= 5) return 2;  // full identity KYC
+  return 1;                                   // partial claims
 }
 ```
 
-### KYC Levels
+### KYC Claims
 
-| Level | Description |
-|-------|-------------|
-| 0 | Not verified |
-| 1 | Basic verification (email) |
-| 2 | Identity verified (ID document) |
-| 3 | Enhanced verification (additional docs) |
+`kyc_level` is a claim list, not a level. Claims observed on mainnet from the `metal.kyc` provider:
+
+| Claim | Meaning |
+|-------|---------|
+| `metal.kyc:firstname`, `metal.kyc:lastname` | Legal name verified |
+| `metal.kyc:birthdate` | Date of birth verified |
+| `metal.kyc:address` | Residential address verified |
+| `metal.kyc:frontofid`, `metal.kyc:backofid` | Government ID document captured |
+| `metal.kyc:selfie` | Liveness / selfie match |
+
+A fully verified account carries all seven. Other providers may issue different claim names — always split on `,` and match by string rather than assuming a fixed set.
+
+> **Don't `parseInt(kyc_level)`.** It returns `NaN` for every real account, so `Math.max(...)` is `NaN` and any `>= n` check is `false` — a gate written that way silently fails closed (or open, depending on how you branch). Earlier versions of this doc had exactly that bug.
 
 ---
 
@@ -255,6 +280,7 @@ export function UserCard({ account }: UserCardProps) {
       <div>
         <h3>{profile?.name || account}</h3>
         <span className="account">@{account}</span>
+        {/* `verified` is an opt-in display flag, independent of KYC — most KYC'd accounts have it false */}
         {profile?.verified && <span className="checkmark">✓ Verified</span>}
         {isKYC && <span className="kyc-badge">KYC</span>}
       </div>
@@ -432,13 +458,15 @@ proton table eosio.proton usersinfo -l ACCOUNT -u ACCOUNT
 | `acc` | Account name |
 | `name` | Display name |
 | `avatar` | Avatar URL/base64 |
-| `verified` | Blue checkmark |
-| `kyc` | Array of KYC verifications |
+| `verified` | Opt-in display checkmark (set by a verifier) — independent of KYC |
+| `kyc` | Array of `{kyc_provider, kyc_level (claim list), kyc_date}` |
 
 ### KYC Check Pattern
 
 ```typescript
 const profile = await getUserProfile(account);
 const isKYC = profile?.kyc?.length > 0;
-const kycLevel = Math.max(...(profile?.kyc?.map(k => parseInt(k.kyc_level)) ?? [0]));
+const claims = profile?.kyc?.flatMap(k => k.kyc_level.split(',')) ?? [];
+const hasIdDoc = claims.some(c => /frontofid|backofid/.test(c));
+// NOT parseInt(kyc_level) — it's a claim list, parseInt gives NaN
 ```

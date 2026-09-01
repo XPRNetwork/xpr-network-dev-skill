@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.3.3] — 2026-09-02
+
+Community audit response — every finding in [issue #32](https://github.com/XPRNetwork/xpr-network-dev-skill/issues/32) independently re-verified against mainnet before fixing. Thanks to the reporter: all six were real.
+
+### Fixed
+
+- **DEX wrong-memo outcome — the two docs contradicted each other** (`metalx-dex.md` said "permanently stuck", `defi-trading.md` said "treated as a regular transfer"). Settled empirically from 17 real wrong-memo deposits by 8 accounts (2025-10 → 2026-04): the transfer **succeeds** (contract doesn't reject), is **not credited** to `balances`, and there is **no contract path to recover it** (`withdraw`/`withdrawall` read only `balances`; ABI has no admin refund). One large case was manually refunded by the operators after ~10 days (memo `refund`); several others never were. Both docs and the `SKILL.md` safety rule now say the same thing: treat as lost, contact MetalX support immediately, recovery is discretionary. `metalx-dex.md`, `defi-trading.md`, `SKILL.md`
+- **"XPR accounts cannot contain dots" was false** — `eosio.token`, `xmd.token`, `xmd.treasury`, `lending.loan` etc. all exist (and appear in the skill's own tables). Rule corrected: the Antelope charset is `a-z 1-5 .`; dotted names are system/premium accounts, *user-registered* names are dot-free. Added a validator gotcha so agents stop flagging canonical contracts as malformed. `accounts-permissions.md`, `resources.md`, `SKILL.md`, `README.md`
+- **`getKYCLevel()` returned `NaN` on mainnet** — `kyc_level` is a comma-separated *claim list* (`metal.kyc:address,metal.kyc:selfie,…`), not a number, so `parseInt` → `NaN` and every `>= n` gate silently failed. Replaced with `getKYCClaims()` / `hasKYCClaim()` / an explicitly-derived `getKYCTier()`; the fake "levels 0–3" table replaced with the real claim list; example response corrected; documented that `verified` is an opt-in display flag independent of KYC (fully KYC'd accounts routinely have `verified: false`). `webauth-identity.md`
+- **`/v2/history/get_transfers` is not deployed on XPR Hyperion endpoints (404)** — was documented with a worked example, and the 404 read as "no transfers found". Replaced both implementations with `get_actions?filter=eosio.token:transfer` plus the `@transfer.to/from/symbol` narrowing params (live-verified). `rpc-queries.md`
+- **Streaming section documented a raw `wss://…/stream` WebSocket that cannot connect** — Hyperion streaming is **socket.io mounted at `path: '/stream'`** on the HTTPS origin. Rewrote the section around `@eosrio/hyperion-stream-client` (and a raw `socket.io-client` recipe), with the negative controls that fail and why. **Honest status included:** connection + request handshake verified on eosusa, but no live or replay data was delivered in 60–90 s tests, and saltant (404) / protonuk (403) don't expose the mount — so public streaming is documented as best-effort with polling as the default. `real-time-events.md`, `rpc-queries.md`
+- **Oracle feed tables disagreed across four modules** (5 / 5 / 13 / 15 rows). `oracles-randomness.md` is now the canonical table (19 live feeds, verified via `oracles::feed` actions), the other three are labeled excerpts that link to it. Added liveness notes: indices 5, 10, 11, 12, 20 are dormant (1+ years without updates) — **index 12 (XMD/USD) is a trap**: live token, dead feed; use 9 (USDT/USD) as the dollar reference. `oracles-randomness.md`, `loan-protocol.md`, `rpc-queries.md`, `resources.md`
+
+---
+
 ## [2.3.2] — 2026-07-06
 
 Monthly drift audit. Full re-verification against live mainnet came back clean — all 28 cited accounts, all 18 MetalX DEX markets, all fee values, all 6 Hyperion endpoints, and all canonical MetalX docs claims held. Fixes below are the only drift found.

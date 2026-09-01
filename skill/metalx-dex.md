@@ -31,8 +31,14 @@ If the primary RPC is unavailable, use these alternatives for chain queries:
 > ⚠️ **CRITICAL: DEX Token Deposits**
 >
 > When transferring tokens to the `dex` contract for order placement, the memo **MUST be an empty string** (`""`).
-> Using any other memo (e.g., `"deposit"`) will result in tokens being **permanently stuck** in the contract with no way to recover them.
-> The `withdrawall` action will NOT return tokens deposited with a wrong memo.
+>
+> **What actually happens with any other memo (e.g. `"deposit"`) — verified against 17 real cases on mainnet, 2025-10 → 2026-04:**
+> - The transfer **succeeds** — the `dex` contract does not reject it, so you get no error.
+> - It is **not treated as a deposit**: no `balances` row is credited, so the tokens are not tradeable and not visible in the DEX UI.
+> - There is **no contract path to get them back** — `withdraw` / `withdrawall` only read `balances`, and the `dex` ABI has no admin refund action.
+> - Recovery is **only** possible as a manual, off-protocol transfer by the MetalX operators from the `dex` account. In the on-chain record this happened once (a large deposit was returned after ~10 days with memo `refund`); several other cases were never returned. **Treat it as lost, and contact MetalX support immediately with the transaction id** — https://help.xprnetwork.org
+>
+> Contrast: Alcor **fails closed** on a malformed memo (transfer reverts, funds stay in your wallet — see `alcor-dex.md`). MetalX `dex` **fails open**. Same mistake, opposite outcome.
 >
 > ```bash
 > # ✅ CORRECT — empty memo

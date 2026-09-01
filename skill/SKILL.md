@@ -1,7 +1,7 @@
 ---
 name: xpr-network-dev
 description: Comprehensive knowledge for XPR Network blockchain development - smart contracts, CLI, web SDK, DeFi, NFTs, and infrastructure
-version: 2.3.2
+version: 2.3.3
 author: XPR Network Community
 repository: https://github.com/XPRNetwork/xpr-network-dev-skill
 ---
@@ -31,7 +31,7 @@ XPR Network is an EOS-based blockchain optimized for payments and identity:
 |---------|-------------|
 | **Speed** | 0.5 second block times, 4000+ TPS |
 | **Fees** | Zero gas fees for end users |
-| **Accounts** | Human-readable names (1-12 chars, a-z, 1-5) |
+| **Accounts** | Human-readable names, 1-12 chars from `a-z`, `1-5`, `.`; dots only in system/premium names (`eosio.token`, `xmd.token`) — user-registered names are dot-free |
 | **Wallets** | WebAuthn support (Face ID, fingerprint, security keys) |
 | **Contracts** | AssemblyScript/TypeScript with `proton-tsc` |
 | **Storage** | On-chain tables with RAM-based pricing |
@@ -234,5 +234,5 @@ const { link, session } = await ProtonWebSDK({
 3. **Verify the target account** before deploying - wrong account = overwrite existing contract
 4. **Back up ABIs** before deploying changes
 5. **Use new tables** for new features instead of modifying existing ones
-6. **DEX deposits MUST use empty memo** (`""`) — any other memo (e.g. `"deposit"`) causes permanent, irrecoverable fund loss. See `metalx-dex.md`.
+6. **DEX deposits MUST use empty memo** (`""`) — any other memo (e.g. `"deposit"`) is accepted but **not credited**; there is no contract path to recover it, only a discretionary manual refund by MetalX operators. Treat as fund loss. See `metalx-dex.md`.
 7. **All-numeric account names** (e.g. `333555`) cause silent data loss in `get_table_rows` — see `rpc-queries.md` for workarounds.

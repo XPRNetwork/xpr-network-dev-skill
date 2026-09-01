@@ -52,7 +52,7 @@ Fast, lightweight API for common queries like token balances.
 |---|---|---|
 | Tight `push_trx` retry loops on failing transactions | Every retry is a full broadcast across the cluster — failed tx still consumes operator CPU. Agents commonly retry on assertion failures expecting transient errors. | Distinguish retryable (`cpu usage exceeded`, expired) from permanent (assertion failure, missing authority). Exponential backoff. Don't retry assertion failures — they'll keep failing. |
 | `get_table_rows` polled in a tight loop | RAM-stored tables are expensive to read. Looping every 100ms because "you need fresh data" is the #1 RPC abuse. | Poll at 10s+ for most state. Cache the last response. Use Hyperion deltas (`/v2/history/get_deltas`) to react to *changes* rather than re-reading the whole row set. |
-| Constant `get_transactions` / `get_actions` (several/sec) | Hyperion-side bandwidth and indexer load. | Use Hyperion's streaming API (`/v2/stream`) or WebSocket subscriptions instead of polling. |
+| Constant `get_transactions` / `get_actions` (several/sec) | Hyperion-side bandwidth and indexer load. | Poll at a sane interval with `after=` cursors, or stream — but note public-endpoint streaming is currently best-effort (see `real-time-events.md`); self-hosted Hyperion streams reliably. |
 | Unbounded `get_history` page-scroll | Walking 10,000 actions one page at a time hits the operator with hundreds of queries for one user task. | Cap the page-scroll. Cache historical pages (they don't change). If you genuinely need full history, run your own indexer. |
 
 ### Response codes — what they actually mean
@@ -67,7 +67,7 @@ Fast, lightweight API for common queries like token balances.
 
 - **Don't poll faster than you need.** Live state (head_block_num, freshest trades) at 1–2 seconds is fine. Most state (balances, table rows, account info) changes infrequently — **10 seconds or more is plenty**. Never sub-second.
 - **Cache aggressively.** `get_info.chain_id` never changes — cache forever. ABIs change only on contract deploy — cache for hours. Account info, table schemas — minutes to hours, not seconds.
-- **Prefer streaming over polling for live updates.** Hyperion exposes `/v2/stream` for action and delta streams; many operators also run WebSocket endpoints. One persistent subscription costs the operator one connection; one-second polling costs 86,400 requests/day per agent.
+- **Stream instead of polling when you can.** Hyperion's socket.io stream (mounted at `/stream`) costs the operator one connection where one-second polling costs 86,400 requests/day per agent. Caveat: on the public XPR endpoints the connection handshake works but data delivery is unverified as of 2026-09 (`real-time-events.md` has the details) — so default to polite polling and stream from your own Hyperion when you need real-time.
 - **Rotate between endpoints.** Round-robin or randomize across the operator pool to spread load.
 - **Identify yourself.** Set a meaningful `User-Agent` header (e.g. `XPRAgent/myagent 1.0`). Operators triage bad behavior much more aggressively when traffic is anonymous.
 - **High-volume? Run your own.** If your agent monitors every swap, indexes every NFT trade, or otherwise needs thousands of requests per minute, **don't rely on public endpoints** — run your own indexer node or rent dedicated capacity.
@@ -494,13 +494,16 @@ const btcPrice = parseFloat(rows[0].aggregate.d_double);
 
 ### Oracle Feed Indexes
 
+Common feeds (excerpt — the **canonical full table** with liveness notes is in [`oracles-randomness.md`](./oracles-randomness.md#available-price-feeds)):
+
 | Index | Pair |
 |-------|------|
 | 3 | XPR/USD |
 | 4 | BTC/USD |
-| 5 | USDC/USD |
 | 7 | ETH/USD |
-| 13 | BUSD/USD |
+| 9 | USDT/USD |
+
+> Index 5 (USDC/USD) has not updated since 2023 — don't use it; index 9 (USDT/USD) is the live dollar reference.
 
 ### Singleton Tables
 
@@ -623,7 +626,7 @@ Hyperion provides full history and state APIs. Base URL: `https://proton.eosusa.
 | `/v2/history/get_abi_snapshot` | Historical ABI |
 | `/v2/history/get_created_accounts` | Accounts created by account |
 | `/v2/history/get_creator` | Get account creator |
-| `/v2/history/get_transfers` | Token transfer history |
+| ~~`/v2/history/get_transfers`~~ | **Not deployed on XPR Network Hyperion endpoints — returns 404** (verified eosusa + protonuk, 2026-09). Use `get_actions` with `filter=eosio.token:transfer` (below). |
 
 ### State Endpoints
 
@@ -723,21 +726,39 @@ interface Transfer {
   trx_id: string;
 }
 
+// NOTE: Hyperion has a dedicated /v2/history/get_transfers route, but it is NOT
+// deployed on the public XPR Network endpoints — it returns HTTP 404 (verified on
+// proton.eosusa.io and proton.protonuk.io). Do not treat that 404 as "no transfers".
+// Use get_actions with the transfer filter instead; it carries the same data.
 async function getTransfers(
   account: string,
-  symbol?: string
-): Promise<{ transfers: Transfer[] }> {
-  const url = new URL('https://proton.eosusa.io/v2/history/get_transfers');
+  opts: { symbol?: string; direction?: 'in' | 'out'; contract?: string; limit?: number } = {}
+): Promise<Transfer[]> {
+  const { symbol, direction, contract = 'eosio.token', limit = 100 } = opts;
+  const url = new URL('https://proton.eosusa.io/v2/history/get_actions');
   url.searchParams.set('account', account);
-  if (symbol) url.searchParams.set('symbol', symbol);
-  url.searchParams.set('limit', '100');
+  url.searchParams.set('filter', `${contract}:transfer`);
+  url.searchParams.set('limit', String(limit));
+  url.searchParams.set('sort', 'desc');
+  // Optional server-side narrowing — Hyperion indexes transfer fields as @transfer.*
+  if (direction === 'in')  url.searchParams.set('@transfer.to', account);
+  if (direction === 'out') url.searchParams.set('@transfer.from', account);
+  if (symbol) url.searchParams.set('@transfer.symbol', symbol);
 
-  const response = await fetch(url);
-  return response.json();
+  const { actions } = await (await fetch(url)).json();
+  return actions.map((a: any) => ({
+    from: a.act.data.from,
+    to: a.act.data.to,
+    quantity: a.act.data.quantity,
+    memo: a.act.data.memo ?? '',
+    block_num: a.block_num,
+    '@timestamp': a['@timestamp'],
+    trx_id: a.trx_id,
+  }));
 }
 
-// Get XPR transfers only
-const { transfers } = await getTransfers('alice', 'XPR');
+// Inbound XPR transfers only
+const transfers = await getTransfers('alice', { symbol: 'XPR', direction: 'in' });
 ```
 
 ### Get Transaction by ID
@@ -1042,13 +1063,17 @@ class XPRQueryService {
     return response.json();
   }
 
-  async getTransfers(account: string, symbol?: string) {
-    const url = new URL(`${this.hyperionBase}/v2/history/get_transfers`);
+  // /v2/history/get_transfers is NOT deployed on XPR Hyperion endpoints (404) —
+  // use get_actions with the transfer filter and map act.data.
+  async getTransfers(account: string, symbol?: string, limit = 100) {
+    const url = new URL(`${this.hyperionBase}/v2/history/get_actions`);
     url.searchParams.set('account', account);
-    if (symbol) url.searchParams.set('symbol', symbol);
+    url.searchParams.set('filter', 'eosio.token:transfer');
+    url.searchParams.set('limit', String(limit));
+    if (symbol) url.searchParams.set('@transfer.symbol', symbol);
 
-    const response = await fetch(url);
-    return response.json();
+    const { actions } = await (await fetch(url)).json();
+    return actions.map((a: any) => ({ ...a.act.data, block_num: a.block_num, timestamp: a['@timestamp'], trx_id: a.trx_id }));
   }
 
   // === Light API (fast queries) ===

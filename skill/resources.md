@@ -21,7 +21,7 @@ Comprehensive list of endpoints, tools, documentation, and community resources f
 | Block producers | 21 active |
 | Token symbol | XPR |
 | Token precision | 4 decimals |
-| Account names | 1-12 characters (a-z, 1-5) |
+| Account names | 1-12 characters from `a-z`, `1-5`, `.` — dots appear in system/premium names (`eosio.token`, `xmd.token`); user-registered names are dot-free. See `accounts-permissions.md`. |
 
 ---
 
@@ -322,13 +322,14 @@ The response gives `supply`, `max_supply`, and `issuer` for that token.
 
 ## Oracle Price Feeds
 
+Common feeds (excerpt — **canonical full table** with liveness notes: [`oracles-randomness.md`](./oracles-randomness.md#available-price-feeds)):
+
 | Index | Pair | Description |
 |-------|------|-------------|
-| 3 | XPR/USD | XPR price |
+| 3 | XPR/USD | XPR price (10-min avg) |
 | 4 | BTC/USD | Bitcoin price |
-| 5 | USDC/USD | USD Coin price |
 | 7 | ETH/USD | Ethereum price |
-| 13 | BUSD/USD | Binance USD price |
+| 9 | USDT/USD | Live dollar reference (index 5 USDC/USD is dormant) |
 
 ### Query Oracle
 
