@@ -46,7 +46,7 @@ Your assistant will see the new content on its next conversation. No reinstall.
 ./scripts/agent-bootstrap.sh
 ```
 
-> **Current release: v2.4.0 (September 2026).** Full release notes and version history in [`CHANGELOG.md`](./CHANGELOG.md).
+> **Current release: v2.5.0 (September 2026).** Full release notes and version history in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ### Method 1: Manual symlink (personal skill)
 
@@ -181,6 +181,8 @@ For any AI tool, you can paste sections directly:
 | Module                                       | Description                                        |
 | -------------------------------------------- | -------------------------------------------------- |
 | [node-operation.md](skill/node-operation.md) | API nodes, Block Producers, validators, Leap setup |
+| [hyperion-setup.md](skill/hyperion-setup.md) | Hyperion v4 full-history node: sizing, dependencies, blocks.log replay, nginx |
+| [hyperion-operations-caveats.md](skill/hyperion-operations-caveats.md) | Indexer field notes: template trap, Redis bloat, disk-full stalls, 10M-range backfill, completeness verification |
 
 ### Safety & Reference
 
@@ -236,6 +238,7 @@ Claude will load specialized modules on demand based on your queries.
 - Automated bots and scheduled tasks
 - `@xpr-agents/sdk` registries (Agent, Escrow, Validation, Feedback) for read + write
 - Hyperion and Light API integration
+- Running your own Hyperion full-history node (setup + hard-won operations caveats)
 - Legacy `JsSignatureProvider` pattern (documented as the discouraged fallback, not the default)
 
 ### Token & Identity
