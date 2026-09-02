@@ -54,7 +54,7 @@ proton endpoint:default
 
 ## Key Management
 
-**IMPORTANT**: Never store private keys in code or config files!
+Keep private keys out of code and config files. Anything that reads a key into the process is the leak surface the keychain pattern in `backend-patterns.md` → *Security: Key Isolation* exists to close.
 
 ```bash
 # Generate new key pair

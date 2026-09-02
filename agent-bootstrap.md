@@ -228,21 +228,18 @@ Re-running is safe — `npm install` and `git pull` are both idempotent.
 You are an XPR Network agent on a managed console (Pinata Agents).
 Bootstrap yourself.
 
-═══════════════════════════════════════════════════════════════
-HARD RULES — read these before doing anything
-═══════════════════════════════════════════════════════════════
-1. NEVER run `proton key:add` without arguments. This console has
-   no real TTY; the interactive prompt will hang or appear to work
-   but mangle the input.
-2. ALWAYS use the non-interactive form:
-       echo "no" | proton key:add PVT_K1_<the-actual-key>
-3. If you see "Error: invalid base-58 value" — the key was mangled
-   in transit (whitespace, smart quotes, line breaks). STOP. Ask
-   me to re-send it; do not retry. Do not echo the key back to me
-   when asking.
-4. After the key is loaded, NEVER store or repeat it. Confirm only
-   with `proton key:list`, which redacts the private value.
-═══════════════════════════════════════════════════════════════
+Key handling on this console. There is no real TTY here, so exactly
+one form of key loading works:
+
+    echo "no" | proton key:add PVT_K1_<the-actual-key>
+
+Bare `proton key:add` hangs on this console, or appears to work and
+mangles the input, so do not run it. If key:add reports
+"Error: invalid base-58 value", the key was corrupted in transit
+(whitespace, smart quotes, line breaks): stop and ask me to re-send
+it rather than retrying variants, and do not echo the key back when
+you ask. Once the key is loaded, do not store or repeat it anywhere;
+confirm with `proton key:list`, which prints only public values.
 
 Step 1 — Run the bootstrap script:
 
@@ -257,13 +254,12 @@ Step 2 — Keychain provisioning:
      XPR_PRIVATE_KEY was set in Pinata Secrets: confirm with
      `proton key:list` and move on.
 
-  b) Otherwise: ask me to provide the key. When I send it, run
-     EXACTLY:
+  b) Otherwise: ask me to provide the key. When I send it, run:
 
          echo "no" | proton key:add <key-you-received>
 
      Then run `proton key:list` to verify the account is registered.
-     Apply the HARD RULES above.
+     The key-handling rules above apply.
 
 Step 3 — Ground yourself:
 
@@ -309,12 +305,12 @@ echo "no" | proton key:add PVT_K1_yourkey
 
 Never run bare `proton key:add` in a Pinata agent, a CI container, a thin web console, or anywhere `tty -s` returns false. See Step 2b.
 
-**`TypeError: result.map is not a function` from the smoke test.** You're running an older version of `agent-bootstrap.md` against a current `@xpr-agents/sdk`. The SDK's `listAgents()` returns `{ items, hasMore, nextCursor }` — call `.items.map(a => a.account)` on the result. Pull the latest doc; this was a bug in the original publication.
+**`TypeError: result.map is not a function` from the smoke test.** Your copy of this doc is stale. `listAgents()` returns `{ items, hasMore, nextCursor }` — call `.items.map(a => a.account)` on the result. Pull the latest doc.
 
-**"`Buffer.from(undefined)` / `TypeError` on submit-order.** You're hitting an older copy of `metalx-dex.md`. Step 3's `git pull` fixes this — the snippet was corrected in PR #18 (May 2026).
+**"`Buffer.from(undefined)` / `TypeError` on submit-order.** Your copy of `metalx-dex.md` is stale. Step 3's `git pull` fixes this.
 
 **"`insufficient balance` on `liquidityadd`.** The deposit prerequisite isn't optional. Read `skill/defi-trading.md` → *Add Liquidity* — the 3-step `depositprep` → empty-memo transfer → `liquidityadd` flow is mandatory.
 
-**"`api is not defined`" inside a copy-pasted `sendTransaction` / `safeTransact`.** Same fix: pull the latest skill. The helpers now take a `session` argument (PR #18).
+**"`api is not defined`" inside a copy-pasted `sendTransaction` / `safeTransact`.** Same fix: pull the latest skill. The helpers take a `session` argument.
 
 **Agent runner refuses to start with `XPR_PRIVATE_KEY` set.** Working as designed. `@xpr-agents/openclaw` v0.3.0+ refuses if it sees a chain private key in env — that's the safety net for the keychain pattern. Either unset the variable or, if you genuinely need the legacy pattern, build your own service outside the agent runner's supported envelope.
