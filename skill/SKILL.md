@@ -1,7 +1,7 @@
 ---
 name: xpr-network-dev
 description: Comprehensive knowledge for XPR Network blockchain development - smart contracts, CLI, web SDK, DeFi, NFTs, and infrastructure
-version: 2.4.0
+version: 2.5.0
 author: XPR Network Community
 repository: https://github.com/XPRNetwork/xpr-network-dev-skill
 ---
@@ -102,6 +102,8 @@ Load specialized modules based on your task:
 | Module | Read When | Key Topics |
 |--------|-----------|------------|
 | `node-operation.md` | Running nodes | API nodes, Block Producers, validators |
+| `hyperion-setup.md` | Setting up history nodes | Hyperion v4 full-history build, hardware sizing, dependency caveats, blocks.log replay, nginx/stream proxy |
+| `hyperion-operations-caveats.md` | Running/debugging a Hyperion indexer | Composable-template trap, Redis bloat, disk-full stalls, queue purges that lose data, 10M-range backfill, consumer coma revive, `max_asc_window_days`, proving action-completeness |
 
 ### Safety & Reference
 

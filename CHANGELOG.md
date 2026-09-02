@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.5.0] — 2026-09-02
+
+### Added
+
+- **`hyperion-setup.md`** — standing up a Hyperion v4 full-history node on XPR mainnet, written from the protonnz full-history build (4.0.8, indexed to head). Version matrix, hardware sizing (~2TB full history), Hetzner RAID1 split, OS limits, Elasticsearch 9 / RabbitMQ 4 / MongoDB 8 install traps, SHIP `config.ini`, the two honest full-history paths (blocks.log replay vs p2p from genesis), `hyp-config` quirks (no-TTY crash, missing `experimental` key, chains-new needs a serving node), the replay-before-index ordering rule, nginx with a `/stream/` socket.io proxy, bp.json feature flags.
+- **`hyperion-operations-caveats.md`** — field notes from several multi-day incidents, in discovery order: composable `_index_template` silently replacing Hyperion's legacy templates (dynamic-mapping explosion, 1,000-field cap, writes at ~2 docs/s); real storage footprint and the DEX-peak projection trap; orphaned Redis `temp-*.rdb` files (425GB reclaimed) and unbounded Redis RSS; disk-full → ES read-only → stall at a 10M partition boundary; never purge queues with docs in flight; backfill in bounded 10M ranges; the "consumer coma" wedge and the stop/wait/start revive; jam-resistant scaling; Hetzner storage constraint and the governance-funding precedent; the 10k `max_result_window` vs cursor pagination; `max_asc_window_days` masquerading as missing history; block-complete ≠ action-complete and the `scan-actions`/`fill-missing`/cross-check standard.
+- README Infrastructure table and Backend Development topic list; SKILL.md routing rows for both modules.
+
+Every CLI subcommand and config key in both modules was checked against upstream `eosrio/hyperion-history-api` source (4.1.0). Operator sources are paraphrased and unattributed by design.
+
+MINOR bump per this changelog's convention (new reference content).
+
+---
+
 ## [2.4.0] — 2026-09-02
 
 ### Added
