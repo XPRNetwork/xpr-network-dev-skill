@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.5.1] — 2026-09-03
+
+Prompt audit of the skill's model-facing text (SKILL.md, the agent bootstrap chat prompt, module rule lines) against current Claude models. No rule was dropped; every change removes duplication, shouting register, or archaeology while keeping each constraint and its reason.
+
+### Changed
+
+- **`SKILL.md` frontmatter description** now names the legacy brand and package namespace (Proton, proton-tsc, `@proton/*`) and the product areas the modules cover, so the skill triggers on questions that never say "XPR Network".
+- **`SKILL.md` AI-generated-code disclaimer** collapsed from a bullet wall to one reasoned paragraph pointing at the full checklist in `safety-guidelines.md`.
+- **`SKILL.md`** mid-file "CRITICAL: Before Modifying Contracts" block removed — the same rule already routes in the module table and is recapped in Safety Reminders.
+- **`agent-bootstrap.md` bootstrap chat prompt**: the four key-handling rules (non-interactive `key:add` only, base-58 error means stop and re-send, never echo or store the key, confirm via `key:list`) restated at normal volume with their reasons, replacing the boxed HARD RULES block.
+- **`agent-bootstrap.md` troubleshooting**: PR numbers and "original publication" history removed from three symptom→fix entries.
+- **`cli-reference.md`** key-management rule now states its reason and points at the key-isolation section instead of an exclamation.
+
+---
+
 ## [2.5.0] — 2026-09-02
 
 ### Added
