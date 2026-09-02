@@ -90,8 +90,7 @@ proton key:reset
 
 ### Key Storage Location
 
-- **Keys**: `~/.proton-cli/keys.json` (encrypted when locked)
-- **Config**: `~/.proton-cli/config.json`
+- **Keys + config**: one file, `proton-cli.json`, in the OS config directory — macOS `~/Library/Preferences/@proton/cli-nodejs/`, Linux `~/.config/@proton/cli-nodejs/`. Private keys live in its `privateKeys` array and are encrypted in place when the store is locked (`proton key:lock`). There is no `~/.proton-cli` directory.
 
 ---
 
@@ -289,14 +288,15 @@ proton table oracles data -l 4 -u 4
 ## Transactions
 
 ```bash
-# Execute raw transaction JSON
-proton transaction '{"actions":[...]}'
+# Sign a raw transaction with the keychain and broadcast it
+# (takes UNSIGNED {"actions":[...]} JSON; signs with the stored key)
+proton transaction:push '{"actions":[...]}'
 
 # Get transaction by ID
 proton transaction:get TRANSACTION_ID
 
-# Push signed transaction
-proton transaction:push SIGNED_TX_JSON
+# Note: bare `proton transaction '<json>'` does not JSON.parse its argument
+# and fails on a JSON string — use transaction:push for raw transactions.
 
 # Push to specific endpoint
 proton transaction:push SIGNED_TX_JSON -u https://proton.eosusa.io

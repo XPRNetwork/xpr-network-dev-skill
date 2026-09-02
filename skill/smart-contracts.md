@@ -27,13 +27,13 @@ npm install proton-tsc
 ```
 mycontract/
 ├── assembly/
-│   ├── mycontract.contract.ts   # Main contract file (must end in .contract.ts)
+│   ├── mycontract.contract.ts   # Main contract file (.contract.ts by convention)
 │   └── target/                   # Build output (WASM + ABI)
 ├── package.json
 └── tsconfig.json
 ```
 
-**Important**: Contract files must be named `*.contract.ts` for the compiler to recognize them.
+By convention contract files are named `*.contract.ts` (the boilerplate and proton-tsc examples use it). The compiler locates the contract through the `@contract` decorator, not the filename; the build output is named after the source file (`mycontract.contract.wasm` / `.abi`).
 
 ### package.json Scripts
 
@@ -107,11 +107,9 @@ class MyContract extends Contract {
 
   @action("init")
   init(owner: Name): void {
-    // Check if already initialized
-    const existing = this.configSingleton.get();
-    if (existing !== null) {
-      check(false, "Already initialized");
-    }
+    // Check if already initialized — get() never returns null (it returns a
+    // default-constructed Config), so use getOrNull() for existence checks
+    check(this.configSingleton.getOrNull() === null, "Already initialized");
 
     // Set initial config
     const config = new Config(owner, false, 5);
@@ -120,7 +118,7 @@ class MyContract extends Contract {
 
   @action("setpaused")
   setPaused(paused: boolean): void {
-    const config = this.configSingleton.get();
+    const config = this.configSingleton.getOrNull();
     check(config !== null, "Not initialized");
     requireAuth(config!.owner);
 
@@ -130,7 +128,7 @@ class MyContract extends Contract {
 
   @action("myaction")
   myAction(): void {
-    const config = this.configSingleton.get();
+    const config = this.configSingleton.getOrNull();
     check(config !== null, "Not initialized");
     check(!config!.paused, "Contract is paused");
     // ... action logic
@@ -139,7 +137,8 @@ class MyContract extends Contract {
 ```
 
 **Singleton Methods:**
-- `get()` - Returns the singleton value or `null` if not set
+- `get()` - Returns the stored value, or a default-constructed instance if nothing is stored (never `null`)
+- `getOrNull()` - Returns the stored value or `null` if not set — use this for existence checks
 - `set(value, payer)` - Sets or updates the singleton value
 - `remove()` - Removes the singleton value
 
@@ -254,10 +253,7 @@ if (this.userTable.exists(id)) {
 ### Iteration
 
 ```typescript
-// Get all rows
-const users = this.userTable.getAll();
-
-// Iterate with cursor
+// There is no getAll(); iterate with the cursor API
 let cursor = this.userTable.first();
 while (cursor) {
   print(`User: ${cursor.account}`);
@@ -419,11 +415,12 @@ import { InlineAction, PermissionLevel, Name, Asset } from 'proton-tsc';
 @action("paywinner")
 payWinner(winner: Name, amount: Asset): void {
   // Transfer tokens using inline action
-  const transfer = new InlineAction<TransferArgs>("eosio.token", "transfer");
-  transfer.send(
-    [new PermissionLevel(this.receiver, Name.fromString("active"))],
-    new TransferArgs(this.receiver, winner, amount, "Prize payout")
-  );
+  // InlineAction takes the action name; .act(contract, permission) binds the
+  // target contract and authorization; .send(data) dispatches it.
+  const transfer = new InlineAction<TransferArgs>("transfer");
+  transfer
+    .act(Name.fromString("eosio.token"), new PermissionLevel(this.receiver, Name.fromString("active")))
+    .send(new TransferArgs(this.receiver, winner, amount, "Prize payout"));
 }
 
 // Define the action arguments class
@@ -487,7 +484,8 @@ validate(amount: u64, recipient: Name): void {
 
 ```bash
 npm run build
-# Output: assembly/target/mycontract.wasm and mycontract.abi
+# Output: assembly/target/mycontract.contract.wasm and mycontract.contract.abi
+# (named after the source file, minus .ts)
 ```
 
 ### Deploy

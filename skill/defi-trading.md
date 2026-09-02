@@ -146,7 +146,7 @@ async function placeLimitOrder(
     data: {
       market_id: marketId,
       account,
-      order_type: 1,       // 1 = limit (only valid type; use trigger_price for stop loss / take profit)
+      order_type: 1,       // 1 = limit; 2 = stop loss, 3 = take profit (both need trigger_price)
       order_side: orderSide === 'buy' ? 1 : 2,  // 1=buy, 2=sell
       quantity,
       price,
@@ -164,7 +164,7 @@ async function placeLimitOrder(
 
 ### Simulate Market Order
 
-> **Note:** There is no market order type on the DEX. `order_type` only supports `1` (limit).
+> **Note:** There is no distinct *market* order type on the DEX (`order_type` is `1` limit, `2` stop loss, `3` take profit).
 > To simulate a market order, place a limit order with `fill_type: 1` (IOC — Immediate or Cancel)
 > at an aggressive price that will match immediately. Any unfilled remainder is cancelled.
 
@@ -187,7 +187,7 @@ async function placeMarketOrder(
     data: {
       market_id: marketId,
       account,
-      order_type: 1,       // 1 = limit (the only valid order type)
+      order_type: 1,       // 1 = limit (no market type; IOC fill_type below does the job)
       order_side: orderSide === 'buy' ? 1 : 2,
       quantity,
       price: aggressivePrice,

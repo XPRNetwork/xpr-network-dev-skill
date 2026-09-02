@@ -695,7 +695,7 @@ async function createMultiCurrencyInvoice(
   const links: { [currency: string]: string } = {};
 
   // Get current prices
-  const xprPrice = await getOraclePrice(1);
+  const xprPrice = await getOraclePrice(3);   // feed 3 = XPR/USD (there is no feed 1)
 
   for (const [symbol, config] of Object.entries(SUPPORTED_TOKENS)) {
     let amount: number;

@@ -12,7 +12,7 @@ Common issues and solutions for XPR Network development.
 
 **Fix**:
 - **scope**: Convert to u64 name encoding (the `"."` append trick does NOT work for scope — it throws `chain_type_exception`)
-- **lower_bound/upper_bound**: Append `"."` to force name parsing (e.g. `"333555."`)
+- **lower_bound/upper_bound**: Same fix — pass the u64 name encoding (e.g. `"1785205097907617792"`). Appending `"."` (`"333555."`) is rejected with `chain_type_exception` on current nodeos
 - **Alternative for balances**: Use `get_currency_balance` instead, which handles numeric names correctly
 
 See [RPC Queries — All-Numeric Account Names](rpc-queries.md#critical-all-numeric-account-names-eg-333555-111111) for full details, helper functions, and code examples.
@@ -54,7 +54,7 @@ check(amount > 0, "Amount must be positive");
 // Solution: Ensure amount > 0
 ```
 
-### "expired transaction"
+### "transaction has expired, expiration is ..." (`expired_tx_exception`)
 
 **Cause**: Transaction took too long to broadcast.
 
@@ -82,7 +82,7 @@ data: {
 }
 ```
 
-### "cpu usage exceeded"
+### "insufficient objective cpu resources" / "was executing for too long" (`tx_cpu_usage_exceeded`)
 
 **Cause**: Account doesn't have enough CPU staked.
 
@@ -95,12 +95,13 @@ proton account myaccount
 # NOTE: XPR Network uses stakexpr/unstakexpr for staking, NOT delegatebw.
 # The delegatebw action exists on EOSIO but is not the correct method on XPR Network.
 proton action eosio stakexpr '{
-  "owner": "myaccount",
-  "quantity": "10.0000 XPR"
+  "from": "myaccount",
+  "receiver": "myaccount",
+  "stake_xpr_quantity": "10.0000 XPR"
 }' myaccount
 ```
 
-### "ram usage exceeded"
+### "account X has insufficient ram; needs N bytes has M bytes" (`ram_usage_exceeded`)
 
 **Cause**: Not enough RAM to store data.
 
@@ -226,8 +227,11 @@ try {
 **Solutions**:
 ```typescript
 // Clear and re-login
-localStorage.removeItem('proton-storage-actor');
-localStorage.removeItem('proton-storage-session');
+// @proton/link stores several keys under the `proton-storage-` prefix
+// (user-auth, wallet-type, <identifier>-list, ...); clear them all
+Object.keys(localStorage)
+  .filter(k => k.startsWith('proton-storage-'))
+  .forEach(k => localStorage.removeItem(k));
 await login();
 ```
 
@@ -304,7 +308,7 @@ await session.transact({ actions }, { broadcast: true });
 
 ```bash
 # Check WASM size
-ls -lh assembly/target/mycontract.wasm
+ls -lh assembly/target/mycontract.contract.wasm
 ```
 
 ### "ABI mismatch"

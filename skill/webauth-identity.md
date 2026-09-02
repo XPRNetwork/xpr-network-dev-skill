@@ -36,8 +36,8 @@ interface UserInfo {
   verifiedon: number;    // Verification timestamp
   verifier: string;      // Account that verified
   raccs: string[];       // Recovery accounts
-  aacts: string[];       // Authorized apps/accounts
-  ac: object[];          // Account containers
+  aacts: { field_0: string; field_1: string }[];  // ABI: tuple_name_name[]
+  ac: { field_0: string; field_1: string }[];     // ABI: tuple_name_string[]
   kyc: KYCProvider[];    // KYC verifications
 }
 
@@ -139,8 +139,10 @@ async function getKYCTier(account: string): Promise<0 | 1 | 2> {
 | `metal.kyc:address` | Residential address verified |
 | `metal.kyc:frontofid`, `metal.kyc:backofid` | Government ID document captured |
 | `metal.kyc:selfie` | Liveness / selfie match |
+| `metal.kyc:nationalidnumber` | National ID number verified (present in 2026 issuances, sometimes instead of `backofid`) |
+| `trulioo:address`, `trulioo:birthdate`, `trulioo:firstname`, `trulioo:lastname` | Legacy 2021–2023 records (still issued under `kyc_provider: metal.kyc`); no ID-document claims |
 
-A fully verified account carries all seven. Other providers may issue different claim names — always split on `,` and match by string rather than assuming a fixed set.
+A current full KYC record carries 7–8 `metal.kyc:*` claims and claim order varies; the same provider has issued different claim sets over time. Always split on `,` and match by string rather than assuming a fixed set.
 
 > **Don't `parseInt(kyc_level)`.** It returns `NaN` for every real account, so `Math.max(...)` is `NaN` and any `>= n` check is `false` — a gate written that way silently fails closed (or open, depending on how you branch). Earlier versions of this doc had exactly that bug.
 
@@ -371,7 +373,7 @@ function openInWebAuth(account: string) {
 ### Check KYC On-Chain
 
 ```typescript
-import { Name, TableStore, check } from 'proton-tsc';
+import { Name, Table, TableStore, check, requireAuth } from 'proton-tsc';
 
 // Define the usersinfo table structure
 @table("usersinfo", noabigen)

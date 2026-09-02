@@ -296,7 +296,7 @@ The response gives `supply`, `max_supply`, and `issuer` for that token.
 | WebAuth Web | https://webauth.com |
 | WebAuth iOS | App Store |
 | WebAuth Android | Play Store |
-| Anchor | https://greymass.com/anchor |
+| Anchor | https://anchorwallet.io |
 
 ### WebAuth Features
 

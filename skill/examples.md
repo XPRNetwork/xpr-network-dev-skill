@@ -33,7 +33,7 @@ class Config extends Table {
     public max_stake: u64 = 1000000000,    // 100000.0000 XPR
     public min_duration: u32 = 300,        // 5 minutes
     public max_duration: u32 = 86400,      // 24 hours
-    public challenge_expiry: u32 = 3600,   // 1 hour to accept
+    public challenge_expiry: u32 = 3600,   // class default; live config is 900 (15 min)
     public min_price_move_bps: u16 = 1,    // 0.01% minimum
     public treasury: Name = new Name()
   ) { super(); }
@@ -54,18 +54,15 @@ class Challenge extends Table {
     public end_price: u64 = 0,
     public created_at: u64 = 0,
     public started_at: u64 = 0,
+    public expires_at: u64 = 0,           // open-challenge expiry (created_at + challenge_expiry)
     public status: u8 = 0,                // 0=open, 1=active, 2=resolved
     public winner: Name = new Name()
   ) { super(); }
 
   @primary
   get primary(): u64 { return this.id; }
-
-  @secondary
-  get byStatus(): u64 { return this.status; }
-
-  @secondary
-  get byCreator(): u64 { return this.creator.N; }
+  // The deployed contract exposes no secondary indexes (ABI key_names: []);
+  // filter by status client-side. A `global` singleton holds next_challenge_id.
 }
 
 // Player Statistics
@@ -133,29 +130,15 @@ function distributePrize(challenge: Challenge): void {
   const treasuryFee = totalFee - resolverFee;
   const winnerPrize = pool - totalFee;
 
-  // Transfer to winner
-  sendInline('eosio.token', 'transfer', {
-    from: this.receiver,
-    to: challenge.winner,
-    quantity: `${formatAsset(winnerPrize)} XPR`,
-    memo: `PriceBattle #${challenge.id} winnings`
-  });
+  // Token transfers: proton-tsc has no sendInline/formatAsset helpers.
+  // Use sendTransferToken from 'proton-tsc/token' (an inline eosio.token::transfer).
+  const XPR = new Symbol("XPR", 4);
+  const pay = (to: Name, amount: u64, memo: string): void =>
+    sendTransferToken(Name.fromString('eosio.token'), this.receiver, to, new Asset(amount, XPR), memo);
 
-  // Transfer to treasury
-  sendInline('eosio.token', 'transfer', {
-    from: this.receiver,
-    to: config.treasury,
-    quantity: `${formatAsset(treasuryFee)} XPR`,
-    memo: `PriceBattle #${challenge.id} treasury fee`
-  });
-
-  // Transfer to resolver
-  sendInline('eosio.token', 'transfer', {
-    from: this.receiver,
-    to: resolver,
-    quantity: `${formatAsset(resolverFee)} XPR`,
-    memo: `PriceBattle #${challenge.id} resolver reward`
-  });
+  pay(challenge.winner, winnerPrize, `PriceBattle #${challenge.id} winnings`);
+  pay(config.treasury, treasuryFee, `PriceBattle #${challenge.id} treasury fee`);
+  pay(resolver, resolverFee, `PriceBattle #${challenge.id} resolver reward`);
 }
 ```
 
@@ -303,11 +286,10 @@ private handlePost(from: Name, quantity: Asset, content: string): void {
 }
 
 private refund(to: Name, quantity: Asset, memo: string): void {
-  const transfer = new InlineAction<TransferArgs>("eosio.token", "transfer");
-  transfer.send(
-    [new PermissionLevel(this.receiver, Name.fromString("active"))],
-    new TransferArgs(this.receiver, to, quantity, memo)
-  );
+  const transfer = new InlineAction<TransferArgs>("transfer");
+  transfer
+    .act(Name.fromString("eosio.token"), new PermissionLevel(this.receiver, Name.fromString("active")))
+    .send(new TransferArgs(this.receiver, to, quantity, memo));
 }
 ```
 
@@ -367,11 +349,9 @@ class Config extends Table {
 ```typescript
 @action("setrating")
 setRating(account: Name, level: u8, reason: string): void {
-  // Get caller
-  const caller = this.getCaller();
-
-  // Check if caller is admin
-  check(this.isAdmin(caller), "Only admins can set ratings");
+  // proton-tsc has no "caller" API: identify the signing admin by checking
+  // which admin account authorized this transaction (hasAuth).
+  const caller = this.requireAdminAuth();
 
   // Validate level
   check(level >= 1 && level <= 5, "Level must be 1-5");
@@ -390,10 +370,16 @@ setRating(account: Name, level: u8, reason: string): void {
   }
 }
 
-private isAdmin(account: Name): boolean {
+private requireAdminAuth(): Name {
   const config = this.configSingleton.get();
-  if (account == config.owner) return true;
-  return this.adminTable.exists(account.N);
+  if (hasAuth(config.owner)) return config.owner;
+  let admin = this.adminTable.first();
+  while (admin) {
+    if (hasAuth(admin.account)) return admin.account;
+    admin = this.adminTable.next(admin);
+  }
+  check(false, "Only admins can set ratings");
+  return EMPTY_NAME;  // unreachable; satisfies the return type
 }
 ```
 
@@ -552,16 +538,15 @@ private updateStats(player: Name, won: boolean, amount: u64): void {
 ### Get Open Challenges
 
 ```typescript
+// The deployed contract has no secondary index on status, so scan the
+// primary index and filter client-side (index_position: 2 returns no rows).
 const { rows } = await rpc.get_table_rows({
   code: 'pricebattle',
   scope: 'pricebattle',
   table: 'challenges',
-  index_position: 'secondary',  // status index
-  key_type: 'i64',
-  lower_bound: 0,  // OPEN
-  upper_bound: 0,
   limit: 100
 });
+const open = rows.filter((c: any) => c.status === 0);
 ```
 
 ### Get Latest Posts (Non-Deleted)

@@ -42,10 +42,10 @@ describe('MyContract', () => {
     blockchain = new Blockchain();
 
     // Create accounts
-    [contract, user1, user2] = blockchain.createAccounts('mycontract', 'user1', 'user2');
+    [user1, user2] = blockchain.createAccounts('user1', 'user2');
 
-    // Deploy contract (loads .wasm and .abi from target dir)
-    contract.setContract(blockchain.loadContract('assembly/target/mycontract.contract'));
+    // Deploy contract (reads .wasm and .abi from the target dir)
+    contract = blockchain.createContract('mycontract', 'assembly/target/mycontract.contract');
   });
 
   beforeEach(async () => {
@@ -83,8 +83,8 @@ describe('MyContract', () => {
 ```typescript
 test('should handle incoming transfer', async () => {
   // Setup token contract
-  const eosioToken = blockchain.createAccount('eosio.token');
-  eosioToken.setContract(blockchain.loadContract('eosio.token'));
+  // proton-tsc ships a prebuilt eosio.token (abi + wasm) for tests
+  const eosioToken = blockchain.createContract('eosio.token', 'node_modules/proton-tsc/external/eosio.token/eosio.token');
 
   // Create and issue tokens
   await eosioToken.actions.create(['eosio.token', '1000000.0000 XPR']).send();
@@ -109,7 +109,7 @@ test('should expire after duration', async () => {
   await contract.actions.create(['user1', '100.0000 XPR', 1, 300]).send('user1@active');
 
   // Advance blockchain time by 5 minutes
-  blockchain.addTime(300);
+  blockchain.addTime(TimePointSec.from(300));  // import { TimePointSec } from '@greymass/eosio'
 
   // Now it should be resolvable
   await contract.actions.resolve([1]).send('resolver@active');
@@ -181,11 +181,11 @@ The message after "with message:" is from your contract's `check()` calls.
 | `assertion failure with message: ...` | Contract validation failed | Check the condition in your contract |
 | `account does not exist` | Invalid account name | Verify account exists on chain |
 | `table not found` | Querying non-existent table | Check contract is deployed, table name correct |
-| `unable to find key` | Row doesn't exist | Use `get()` with null check instead of `requireGet()` |
-| `expired transaction` | Transaction took too long | Increase `expireSeconds` |
-| `duplicate transaction` | Same tx submitted twice | Add unique data or wait |
-| `cpu usage exceeded` | Not enough CPU | Stake more CPU or optimize contract |
-| `ram usage exceeded` | Not enough RAM | Buy more RAM |
+| *your `requireGet()` message* (C++ contracts: `unable to find key`) | Row doesn't exist | Use `get()` with a null check instead of `requireGet()` |
+| `transaction has expired, expiration is ...` (`expired_tx_exception`) | Transaction took too long | Increase `expireSeconds` |
+| `duplicate transaction <id>` | Same tx submitted twice | Add unique data or wait |
+| `... has insufficient objective cpu resources` / `... was executing for too long` (`tx_cpu_usage_exceeded`) | Not enough CPU | Stake more CPU or optimize contract |
+| `account X has insufficient ram; needs N bytes has M bytes` (`ram_usage_exceeded`) | Not enough RAM | Buy more RAM |
 
 ### Debugging with Proton CLI
 
@@ -199,8 +199,8 @@ proton account myaccount
 # Check table data
 proton table mycontract mytable
 
-# Verbose action execution
-proton action mycontract myaction '{}' myaccount --verbose
+# Execute an action (no flags; output includes the transaction id)
+proton action mycontract myaction '{}' myaccount
 ```
 
 ### Debugging with Hyperion
@@ -221,18 +221,18 @@ curl "https://proton.eosusa.io/v2/history/get_actions?account=mycontract&filter=
 In contracts, use `print()` for debugging (visible in local tests, not on mainnet):
 
 ```typescript
-import { print, printI, printU } from 'proton-tsc';
+import { print, printi, printui } from 'proton-tsc';
 
 @action("debug")
 debugAction(value: u64): void {
   print("Starting debug action\n");
-  printU(value);
+  printui(value);
   print("\n");
 
   // Your logic here
   const result = value * 2;
   print("Result: ");
-  printU(result);
+  printui(result);
   print("\n");
 }
 ```
@@ -435,25 +435,16 @@ while (cursor) {
   cursor = this.dataTable.next(cursor);
 }
 
-// GOOD: Use secondary index for filtered queries
-const filtered = this.dataTable.getBySecondaryIndex(owner.N);
-let total: u64 = 0;
-for (let i = 0; i < filtered.length; i++) {
-  total += filtered[i].value;
-}
+// GOOD: Use a secondary index for point lookups
+// getBySecondaryU64(value, indexPosition) returns ONE row (or null), not an array;
+// for ranges, use lowerBound/upperBound on the index and walk with next()
+const row = this.dataTable.getBySecondaryU64(owner.N, 0);  // 0 = first @secondary index
+const total: u64 = row ? row.value : 0;
 ```
 
 ### RAM Optimization
 
-```typescript
-// Check RAM before operations
-const ramBefore = this.getRamUsage();
-
-// ... operation ...
-
-const ramAfter = this.getRamUsage();
-print(`RAM used: ${ramAfter - ramBefore} bytes\n`);
-```
+There is no in-contract RAM query in proton-tsc. Measure RAM per action from the outside: the explorer shows the RAM delta per action, and `proton table` output shows the `payer` of each row. Keep rows small (fixed-width fields, no unbounded strings) and let the caller pay (`store(row, payer)`).
 
 ---
 

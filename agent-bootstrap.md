@@ -17,7 +17,7 @@ If you're an *individual developer* installing this skill into Claude Code on yo
 
 | Layer | Source | What it gives the agent |
 |---|---|---|
-| **Capabilities** (do things) | [`@xpr-agents/openclaw`](https://github.com/XPRNetwork/xpr-agents) npm plugin | 72 MCP tools across the 4 contracts + A2A + indexer; 13 bundled skills |
+| **Capabilities** (do things) | [`@xpr-agents/openclaw`](https://github.com/XPRNetwork/xpr-agents) npm plugin | 75 MCP tools across the 4 contracts + A2A + indexer; 13 bundled skills |
 | **Knowledge** (do them right) | This repo (`xpr-network-dev-skill`) | Fee math, deposit-first-or-die warnings, memo gotchas, action-name corrections — every fix this repo has shipped is a real failure mode somebody hit |
 
 Without the plugin, the agent has knowledge but no way to act. Without the skill, the agent has tools but will copy-paste the dangerous patterns this repo spent months correcting. Use both.
@@ -36,7 +36,7 @@ On an OpenClaw runtime with the plugin manager, the primary install path is:
 openclaw plugins install @xpr-agents/openclaw
 ```
 
-That registers all 72 MCP tools and auto-loads the 13 bundled skills (pre-built in the npm tarball since v0.4.0 — the boot log prints `Plugin loaded: 72 tools`). If the plugin manager isn't available, or you're integrating as a library, npm-direct works the same as before:
+That registers all 75 MCP tools and auto-loads the 13 bundled skills (pre-built in the npm tarball since v0.4.0 — the boot log prints `Plugin loaded: 75 tools`). If the plugin manager isn't available, or you're integrating as a library, npm-direct works the same as before:
 
 ```bash
 npm install @xpr-agents/openclaw @xpr-agents/sdk @proton/js
@@ -49,7 +49,7 @@ node -e "const oc = require('@xpr-agents/openclaw'); \
          console.log(Object.keys(oc).sort().join('\n'))"
 ```
 
-You should see `createCliSession` and several registry/tool exports.
+You should see `createCliSession`, `createCliApi` and the `exec*`/`check*` proton-CLI helpers (the registry classes live in `@xpr-agents/sdk`).
 
 ### Step 2 — Provision the proton CLI keychain
 
@@ -79,8 +79,8 @@ proton key:list
 
 Notes:
 
-- **There is no `--no-encrypt` / `--encrypt` flag.** Verified against `@proton/cli@0.1.98`. The `echo "no" | …` pipe is the supported way to auto-answer the prompt.
-- **The key lands in the CLI's keychain as plaintext on disk.** Acceptable for a trusted single-tenant container (the agent host's threat model already assumes the host itself isn't compromised). Not acceptable on a shared box. Lock it later with `proton key:lock <password>` if you want encryption-at-rest; `proton key:unlock <password>` flips it back to plaintext.
+- **There is no `--no-encrypt` / `--encrypt` flag.** Verified against `@proton/cli@0.1.99`. The `echo "no" | …` pipe is the supported way to auto-answer the prompt.
+- **The key lands in the CLI's keychain as plaintext on disk.** Acceptable for a trusted single-tenant container (the agent host's threat model already assumes the host itself isn't compromised). Not acceptable on a shared box. Lock it later with `proton key:lock` (prompts for a 32-character password, or generates one if left blank) if you want encryption-at-rest; `proton key:unlock <password>` flips it back to plaintext.
 - **The key is briefly visible in `ps` while `proton key:add` is running** (because it's a positional argument). On Pinata's per-agent containers `ps` is uid-scoped to the agent itself, so this is the same actor that already holds the key — no escalation. On a shared host, it's an exposure.
 - After loading, signing is also non-interactive — `proton transaction:push '<json>'` and `proton action <contract> <action> '<args>' <account>@active` both return without prompts as long as the keystore is unlocked (or never locked).
 - **Pre-existing locked keystores:** `key:add` skips the encryption prompt entirely when `isLocked === true` is already set, but any signing op still needs `proton key:unlock <password>` first.
@@ -139,7 +139,7 @@ node -e "
     console.log('chain_id:', info.chain_id, 'head:', info.head_block_num);
 
     // listAgents returns { items, hasMore, nextCursor } — verified against
-    // @xpr-agents/sdk@0.2.6 AgentRegistry.js line 123. The .items field is
+    // @xpr-agents/sdk@0.2.7 (AgentRegistry.js). The .items field is
     // an Agent[]; do NOT call .map directly on the wrapper.
     const agents = new AgentRegistry(rpc);
     const result = await agents.listAgents({ limit: 5 });
@@ -206,7 +206,7 @@ Re-running is safe — `npm install` and `git pull` are both idempotent.
 
 ## Appendix: Pinata Agents
 
-[Pinata Agents](https://docs.pinata.cloud/agents/overview.md) are hosted OpenClaw instances. The four bootstrap steps above work as-is. A few host-specific notes:
+[Pinata Agents](https://docs.pinata.cloud/agents/overview) are hosted OpenClaw instances. The four bootstrap steps above work as-is. A few host-specific notes:
 
 **Where to run the commands.** Pinata agents have a persistent workspace with Node.js + Python and the ability to write/execute code in conversation. Paste the bootstrap chat prompt below into the agent's first session; the agent will execute each step and report back.
 
@@ -275,7 +275,7 @@ Step 3 — Ground yourself:
 Re-run `./scripts/agent-bootstrap.sh` whenever you want to pull skill updates. The script:
 
 - `git pull` on `./skills/xpr-network-dev/` if it already exists
-- `npm update` on the three xpr-agents packages
+- `npm install` on `@xpr-agents/openclaw`, `@xpr-agents/sdk` and `@proton/js` (re-resolves to the newest matching versions)
 
 No reinstall, no re-keychain.
 
@@ -313,4 +313,4 @@ Never run bare `proton key:add` in a Pinata agent, a CI container, a thin web co
 
 **"`api is not defined`" inside a copy-pasted `sendTransaction` / `safeTransact`.** Same fix: pull the latest skill. The helpers take a `session` argument.
 
-**Agent runner refuses to start with `XPR_PRIVATE_KEY` set.** Working as designed. `@xpr-agents/openclaw` v0.3.0+ refuses if it sees a chain private key in env — that's the safety net for the keychain pattern. Either unset the variable or, if you genuinely need the legacy pattern, build your own service outside the agent runner's supported envelope.
+**Agent runner refuses to start with `XPR_PRIVATE_KEY` set.** Working as designed. The `create-xpr-agent` starter's `start.sh` refuses if it sees a chain private key in env — that's the safety net for the keychain pattern (the check is in the scaffold, not in the `@xpr-agents/openclaw` package). Either unset the variable or, if you genuinely need the legacy pattern, build your own service outside the agent runner's supported envelope.

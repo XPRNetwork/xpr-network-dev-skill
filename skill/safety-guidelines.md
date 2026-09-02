@@ -85,7 +85,7 @@ The deserializer tries to read 8 more bytes that don't exist → **crash**.
 
 | Action | Result |
 |--------|--------|
-| Add a field | ❌ Breaks deserialization |
+| Add a field | ❌ Breaks deserialization (one exception: a *trailing* `BinaryExtension<T>` field — ABI type ending in `$` — is skipped when old rows run out of bytes; every other addition breaks) |
 | Remove a field | ❌ Breaks deserialization |
 | Change field order | ❌ Breaks deserialization |
 | Change field type | ❌ Breaks deserialization |
@@ -217,7 +217,7 @@ Compare old and new table definitions:
 proton contract:abi mycontract > old.abi
 
 # After build, compare
-diff old.abi ./assembly/target/mycontract.abi
+diff old.abi ./assembly/target/mycontract.contract.abi
 ```
 
 ### 3. Test on Testnet First
@@ -298,9 +298,8 @@ Data becomes readable again immediately.
 All actions are recorded forever on-chain. Query with Hyperion:
 
 ```bash
-curl -s "https://proton.eosusa.io/v2/history/get_actions" \
-  -H "Content-Type: application/json" \
-  -d '{"account":"mycontract","limit":100}' | jq '.actions[]'
+# Hyperion get_actions is GET-only (POST returns 404)
+curl -s "https://proton.eosusa.io/v2/history/get_actions?account=mycontract&limit=100" | jq '.actions[]'
 ```
 
 Every action that created table rows can be replayed to rebuild data.
@@ -353,7 +352,7 @@ This is actually a **safety feature** - your data survives developer mistakes!
 | Add new table | ✅ Safe |
 | Add new singleton | ✅ Safe |
 | Change existing table schema | ❌ **DANGEROUS** |
-| Add field to existing table | ❌ **DANGEROUS** |
+| Add field to existing table | ❌ **DANGEROUS** (only a trailing `BinaryExtension<T>` field is safe) |
 | Remove field from existing table | ❌ **DANGEROUS** |
 
 When in doubt, create a NEW table.

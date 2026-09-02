@@ -1,7 +1,7 @@
 ---
 name: xpr-network-dev
 description: XPR Network (formerly Proton) blockchain development - proton-tsc smart contracts, @proton CLI and web SDK, RPC and Hyperion queries, DeFi (MetalX, Alcor, LOAN), NFTs, the XPR Agents job board, node and Hyperion operations. Use for anything mentioning XPR, Proton, or @proton packages.
-version: 2.5.1
+version: 2.6.0
 author: XPR Network Community
 repository: https://github.com/XPRNetwork/xpr-network-dev-skill
 ---

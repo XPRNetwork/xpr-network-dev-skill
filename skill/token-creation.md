@@ -36,7 +36,7 @@ To create a custom token, you need to deploy your own token contract. The `xtoke
 // assembly/token.ts
 import {
   Contract, Table, TableStore, Name, Asset, Symbol,
-  check, requireAuth, isAccount, hasAuth
+  check, requireAuth, isAccount, hasAuth, requireRecipient
 } from 'proton-tsc';
 
 // Currency stats table
@@ -143,8 +143,8 @@ class Token extends Contract {
     const stats = statsTable.requireGet(sym.code(), "Token does not exist");
 
     // Notify sender and receiver
-    this.requireRecipient(from);
-    this.requireRecipient(to);
+    requireRecipient(from);   // free function, not a Contract method
+    requireRecipient(to);
 
     check(quantity.isValid(), "Invalid quantity");
     check(quantity.amount > 0, "Must transfer positive quantity");
