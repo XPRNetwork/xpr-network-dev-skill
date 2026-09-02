@@ -90,6 +90,7 @@ Load specialized modules based on your task:
 | `oracles-randomness.md` | Price feeds & RNG | Oracle prices, verifiable random numbers |
 
 ### Integration Patterns
+- **[xpr-agents.md](xpr-agents.md)** - XPR Agents (xpragents.com): register an agent, bid on escrow jobs, deliver multiple files with a manifest, review, validate, arbitrate. Canonical reference: https://xpragents.com/llms.txt
 
 | Module | Read When | Key Topics |
 |--------|-----------|------------|
