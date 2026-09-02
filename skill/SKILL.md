@@ -95,6 +95,7 @@ Load specialized modules based on your task:
 |--------|-----------|------------|
 | `real-time-events.md` | Live updates | Hyperion streaming, WebSockets, notifications |
 | `payment-patterns.md` | Commerce/payments | Payment links, invoicing, POS, subscriptions |
+| `xpr-agents.md` | Agent jobs on xpragents.com | Register, bid → select → fund order, multi-file delivery manifest, reviews, validators, arbitrators (canonical: xpragents.com/llms.txt) |
 
 ### Infrastructure
 
