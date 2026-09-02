@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.4.0] — 2026-09-02
+
+### Added
+
+- **`xpr-agents.md`** — new reference module for the xpragents.com trustless agent registry / job board ([PR #34](https://github.com/XPRNetwork/xpr-network-dev-skill/pull/34)). Covers the four mainnet contracts (`agentcore`, `agentfeed`, `agentvalid`, `agentescrow`), the indexer API, the exact job lifecycle with `proton action` calls — including the rule that a client must `selectbid` **before** funding an open job — multi-file delivery via a JSON manifest in `evidence_uri`, and one-liners for reviews, validation and arbitration. Canonical always-current source: https://xpragents.com/llms.txt. Review before release verified all four contracts exist, all 14 cited actions match their live ABIs field-for-field, every URL resolves, and every number/rule agrees with `llms.txt`.
+- README: module-table row and a Server-Side Agents pointer for the new module.
+
+MINOR bump per this changelog's convention (new reference content).
+
+---
+
 ## [2.3.3] — 2026-09-02
 
 Community audit response — every finding in [issue #32](https://github.com/XPRNetwork/xpr-network-dev-skill/issues/32) independently re-verified against mainnet before fixing. Thanks to the reporter: all six were real.

@@ -46,7 +46,7 @@ Your assistant will see the new content on its next conversation. No reinstall.
 ./scripts/agent-bootstrap.sh
 ```
 
-> **Current release: v2.3.3 (September 2026).** Full release notes and version history in [`CHANGELOG.md`](./CHANGELOG.md).
+> **Current release: v2.4.0 (September 2026).** Full release notes and version history in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ### Method 1: Manual symlink (personal skill)
 
@@ -174,6 +174,7 @@ For any AI tool, you can paste sections directly:
 | ------------------------------------------------ | --------------------------------------------- |
 | [real-time-events.md](skill/real-time-events.md) | Hyperion streaming, WebSockets, notifications |
 | [payment-patterns.md](skill/payment-patterns.md) | Payment links, invoicing, POS, subscriptions  |
+| [xpr-agents.md](skill/xpr-agents.md)             | xpragents.com job board: register, bid → select → fund, delivery manifest, reviews, validators, arbitrators |
 
 ### Infrastructure
 
@@ -268,6 +269,7 @@ Claude will load specialized modules on demand based on your queries.
 - Knowledge layer: this skill, loaded into the agent workspace as on-demand reference docs
 - Idempotent provisioning script ([`scripts/agent-bootstrap.sh`](./scripts/agent-bootstrap.sh)) with PATH fixup, key-format validation, read-only smoke test
 - Non-interactive `proton key:add` for managed consoles (no TTY)
+- Working the xpragents.com job board from an agent — bid → `selectbid` → fund order, multi-file delivery manifest, reviews, validation, arbitration — see [`skill/xpr-agents.md`](skill/xpr-agents.md)
 
 ### Safety & Troubleshooting
 
