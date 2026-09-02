@@ -22,7 +22,7 @@ All components can run on one box for XPR's load. Redis is used for caching/IPC;
 | Component | Required | Notes |
 |-----------|----------|-------|
 | Hyperion | v4.0.8+ (4.1.0 current, Sept 2026) | v4 added MongoDB; v4 has exploit fixes over v3 — don't deploy v3 |
-| nodeos | Leap **5.0.x** (or Spring 1.2.2+) | **Match the network**: check `server_version_string` from `get_info` on a trusted mainnet API before choosing (mainnet BPs report `v5.0.0` as of Sept 2026; 5.0.3 syncs fine) |
+| nodeos | Leap **5.0.x** (or Spring 1.2.2+) | **Match the network**: check `server_version_string` from `get_info` on a trusted mainnet API before choosing (mainnet BPs report `v5.0.0`–`v5.0.3` as of Sept 2026) |
 | Elasticsearch | **9.x** | |
 | RabbitMQ | 4.x (min 3.12) | Ubuntu 24.04's apt ships 3.12 (EOL) — use upstream repo |
 | MongoDB | 8.x | |
@@ -123,7 +123,7 @@ Point `--data-dir` at the dedicated data drive. **Live peer list**: `https://dan
 **A snapshot cannot produce full history** — SHIP data must exist from block 1, and snapshots carry state only. Either:
 
 1. **blocks.log + local replay (recommended)**: download a full block log, put it in the data dir, start with `--genesis-json`. nodeos re-executes every block locally and writes state-history from block 1. Identical trust model to p2p sync — the log is just input data; all state is derived locally.
-   - Source (still live Sept 2026): `http://snapshots.saltant.io/mainnet/blocks.tar.zst` (~127GB compressed). Mirrors come and go — ask in the official Telegram (https://t.me/XPRNetwork) if dead.
+   - Source (still live Sept 2026): `https://snapshots.saltant.io/mainnet/blocks.tar.zst` (~127GB compressed). Mirrors come and go — ask in the official Telegram (https://t.me/XPRNetwork) if dead.
 2. **Pure p2p from genesis**: same local re-execution, plus days of network fetch, and depends on peers serving 6-year-old blocks.
 
 Replay runs for days. `eos-vm-oc-enable = 1` matters here. The 0.5s block time means XPR has ~2× the blocks of most chains per year of history.
@@ -157,11 +157,11 @@ Indexing flow: first run with `"abi_scan_mode": true` (fast ABI discovery pass),
 
 Indexing *concurrently with a live-syncing node* (i.e. post-replay, catching up over p2p) is fine — that's the case the general Hyperion docs describe.
 
-Enable streaming if you want the websocket API: `"features": { "streaming": { "enable": true, "traces": true, "deltas": true } }` — stream client for v4 lives on the `dev` branch of `eosrio/hyperion-stream-client`.
+Enable streaming if you want the websocket API: `"features": { "streaming": { "enable": true, "traces": true, "deltas": true } }` — the v4 stream client is the `dev` branch of `eosrio/hyperion-stream-client`, published on npm as `@eosrio/hyperion-stream-client@4.0.0-rc.3` (the `latest` tag).
 
 ## Operations (hard-won BP wisdom)
 
-- **Stopping the indexer: use trigger stop, not `pm2 stop`** — trigger stop lets the queues drain; a hard stop leaves messages in RabbitMQ and can corrupt progress. (`./stop <chain>-indexer` in v4; note it reads `control_port` from the chain config.)
+- **Stopping the indexer: use trigger stop, not `pm2 stop`** — trigger stop lets the queues drain; a hard stop leaves messages in RabbitMQ and can corrupt progress. (`./stop <chain>-indexer` in v4; it reads `control_port` from `connections.json` → `chains.<chain>.control_port`, default 7002.)
 - **Watch disk on BOTH filesystems.** Running out of space is the #1 Hyperion killer among operators (it has taken out a BP's pair of instances simultaneously). ES needs ~15% free headroom or it goes read-only — see caveats §2–§3 for the Redis temp-file and partition-boundary failure modes.
 - **Missing blocks**: chain microforks cause occasional gaps; there's a repair script in Hyperion's `scripts/` folder to find and fix them. EOSphere's blog also covers it.
 - **Queue backups**: RabbitMQ queues randomly backing up is a known Hyperion quirk (operators running dozens of instances see it) — watch queue depth in the mgmt UI (`127.0.0.1:15672`). Revive procedure in caveats §5.5.

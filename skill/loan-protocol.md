@@ -263,9 +263,12 @@ async function borrow(
   quantity: string,
   tokenContract: string  // 'eosio.token' for XPR, 'xtokens' for wrapped tokens
 ): Promise<any> {
-  const position = await getUserPosition(session.auth.actor);
+  // There is no health_factor column on-chain. Compute it yourself from
+  // `shares` (L-token balances), `markets` (collateral_factor, exchange rate)
+  // and oracle prices: sum(collateral value × collateral_factor) / sum(debt value).
+  const healthFactor = await computeHealthFactor(session.auth.actor);
 
-  if (position && position.health_factor < 1.2) {
+  if (healthFactor < 1.2) {
     throw new Error('Health factor too low to borrow');
   }
 
@@ -384,25 +387,32 @@ async function getLiquidatableBorrows(): Promise<any[]> {
     })
   });
   const { rows } = await response.json();
-  return rows.filter((p: any) => p.health_factor < 1.0);
+  // `borrows` rows hold principals per token only — there is no health_factor
+  // column. Compute HF per account (collateral × collateral_factor vs. debt,
+  // both at oracle prices) and keep the ones below 1.0.
+  const scored = await Promise.all(
+    rows.map(async (p: any) => ({ ...p, hf: await computeHealthFactor(p.account) }))
+  );
+  return scored.filter((p) => p.hf < 1.0);
 }
 ```
 
 ### Execute Liquidation
 
 ```bash
-# Liquidate an underwater position
-proton action xtokens transfer '{"from":"myaccount","to":"lending.loan","quantity":"500.000000 XUSDC","memo":"liquidate:targetaccount:XPR"}' myaccount
+# Liquidate an underwater position: repay with the borrowed token, memo is
+# comma-separated and names the L-TOKEN collateral to seize (verified from a
+# live log.seize: memo "liquidate,<borrower>,LXRP")
+proton action xtokens transfer '{"from":"myaccount","to":"lending.loan","quantity":"500.000000 XUSDC","memo":"liquidate,targetaccount,LXPR"}' myaccount
 ```
 
-### Liquidation Bonus
+### Liquidation Incentive
 
-| Collateral | Liquidation Bonus |
-|------------|-------------------|
-| XPR | 10% |
-| XUSDC | 5% |
-| XBTC | 10% |
-| XETH | 10% |
+One **global** setting, not per-collateral: `globals.cfg.liquidation_incentive = 0.10` (10%) and `close_factor = 0.10` (at most 10% of the debt per liquidation). Observed seizures pay `1 / (1 − 0.10)` ≈ 11.1% more collateral value than debt repaid. Read it live:
+
+```bash
+proton table lending.loan globals.cfg
+```
 
 ---
 
@@ -416,7 +426,7 @@ proton action xtokens transfer '{"from":"myaccount","to":"lending.loan","quantit
 | Symbol | LOAN |
 | Precision | 4 |
 | Max Supply | Unbounded (`0.0000 LOAN` on the token contract — i.e. no cap) |
-| Circulating (July 2026) | ~113.7 billion LOAN |
+| Circulating (September 2026) | ~114.2 billion LOAN (`114153323234.0560 LOAN`) |
 
 > **Note:** Earlier versions of this doc claimed a 100,000,000 LOAN max supply. That was wrong — `eosio.token::stat` shows `max_supply: 0.0000 LOAN` (unbounded) and `supply` already exceeds 113 billion. Verify the current supply with:
 >
@@ -466,7 +476,7 @@ Oracle feed indices for LOAN collateral assets (excerpt — the **canonical full
 
 ## Whitelist Note
 
-The LOAN protocol has a whitelist (`updatewl` action) that controls which accounts can interact. However, as of February 2026, the `mint` (supply) action appears to work for accounts not on the whitelist. The whitelist may only restrict certain operations like borrowing.
+The `whitelist` table (`updatewl(account, hash, add)`) lists **contract accounts by code hash** that are permitted to call LOAN from contract code. End-user operations are not whitelist-gated: mint, borrow, repay and liquidate all succeed for ordinary accounts that are not in the table (verified September 2026 on a live borrow and liquidation by non-whitelisted accounts).
 
 To check the whitelist:
 
@@ -520,8 +530,8 @@ proton action lending.loan claimrewards '{"claimer":"alice","markets":["LXPR","L
 |----------|-------|-------|-------------|
 | `lending.loan` | `shares` | `lending.loan` | User L-token share balances |
 | `lending.loan` | `markets` | `lending.loan` | Market stats, APYs, reserve ratios |
-| `lending.loan` | `borrows` | `lending.loan` | User borrow positions, health factors |
-| `lending.loan` | `whitelist` | `lending.loan` | Whitelisted accounts |
+| `lending.loan` | `borrows` | `lending.loan` | User borrow positions: `{account, tokens:[{key:{sym,contract}, value:{variable_principal, variable_interest_index, stable_principal, ...}}]}` — no health-factor column |
+| `lending.loan` | `whitelist` | `lending.loan` | Contract accounts (by code hash) allowed to call LOAN from contract code |
 | `loan.token` | (standard token tables) | | LOAN governance token |
 | `oracles` | `data` | `oracles` | Price feeds |
 

@@ -220,9 +220,9 @@ XPR Network allows account names using only digits 1-5 (e.g. `333555`, `111111`,
 | Parameter | Fix | Example |
 |-----------|-----|---------|
 | `scope` | Convert name to u64 encoding | `scope: "1785205097907617792"` |
-| `lower_bound` / `upper_bound` | Append `"."` to force name parsing | `lower_bound: "333555."` |
+| `lower_bound` / `upper_bound` | Convert name to u64 encoding, **or** pass `key_type: "name"` (primary index) so the string is parsed as a name | `lower_bound: "1785205097907617792"` or `lower_bound: "333555", key_type: "name"` |
 
-**The `"."` trick does NOT work for `scope`** — it throws a `chain_type_exception`. You must compute the u64 name encoding.
+**Do not append `"."` to force name parsing** — `"333555."` throws `chain_type_exception` on current nodeos (verified September 2026 on v5.0.x), for bounds as well as scope. Always pass the u64 name encoding.
 
 #### Name-to-u64 Encoding Function
 
@@ -247,17 +247,12 @@ function nameToU64(name: string): string {
   return value.toString();
 }
 
-/** Fix scope parameter for all-numeric account names */
-function safeScopeName(name: string): string {
+/** Fix scope, lower_bound and upper_bound for all-numeric account names */
+function safeName(name: string): string {
   if (/^\d+$/.test(name)) return nameToU64(name);
   return name;
 }
-
-/** Fix lower_bound/upper_bound for all-numeric account names */
-function safeBoundsName(name: string): string {
-  if (/^\d+$/.test(name)) return name + '.';
-  return name;
-}
+const safeScopeName = safeName;   // same rule applies to scope and bounds
 ```
 
 #### Example: Querying a Scoped Table for Account `333555`
@@ -304,15 +299,16 @@ const { rows } = await rpc.get_table_rows({
   limit: 1
 });
 
-// GOOD — append "." to force name parsing
+// GOOD — pass the u64 name encoding (same helper as for scope)
 const { rows } = await rpc.get_table_rows({
   code: 'eosio.proton',
   scope: 'eosio.proton',
   table: 'usersinfo',
-  lower_bound: safeBoundsName('333555'),  // → "333555."
-  upper_bound: safeBoundsName('333555'),
+  lower_bound: nameToU64('333555'),  // → "1785205097907617792"
+  upper_bound: nameToU64('333555'),
   limit: 1
 });
+// (Appending "." — "333555." — throws chain_type_exception on current nodeos.)
 ```
 
 #### Alternative: Use `get_currency_balance` for Token Balances
@@ -334,15 +330,15 @@ const balances = await fetch(endpoint + '/v1/chain/get_currency_balance', {
 | API | Affected? | Notes |
 |-----|-----------|-------|
 | `get_table_rows` scope | YES | Must use u64 encoding |
-| `get_table_rows` lower/upper_bound | YES | Append `"."` |
-| `get_table_by_scope` | NO | Handles names correctly |
+| `get_table_rows` lower/upper_bound | YES | Must use u64 encoding |
+| `get_table_by_scope` lower/upper_bound | YES | Same integer-first parsing — pass the u64 encoding |
 | `get_currency_balance` | NO | Handles names correctly |
 | Hyperion APIs | NO | Use string account names |
 | Light API | NO | Use string account names |
 
-#### `get_table_by_scope` Is Safe
+#### `get_table_by_scope` Has the Same Bug
 
-If you use `get_table_by_scope` to enumerate scopes and then query each scope with `get_table_rows`, note that the scope values returned are already string names — but passing them back as scope in `get_table_rows` still triggers the bug for numeric names. Always apply `safeScopeName()`.
+`get_table_by_scope` with `lower_bound: "333555"` parses the bound as the integer 333555 and returns unrelated scopes (verified: `["....xpr"]`); `lower_bound: "1785205097907617792"` returns `["333555", ...]`. Apply `safeName()` to its bounds too. The scope strings it *returns* are proper names, but passing a numeric one back as `scope` in `get_table_rows` re-triggers the bug — always apply `safeScopeName()`.
 
 ---
 
@@ -726,9 +722,9 @@ interface Transfer {
   trx_id: string;
 }
 
-// NOTE: Hyperion has a dedicated /v2/history/get_transfers route, but it is NOT
-// deployed on the public XPR Network endpoints — it returns HTTP 404 (verified on
-// proton.eosusa.io and proton.protonuk.io). Do not treat that 404 as "no transfers".
+// NOTE: there is no /v2/history/get_transfers route in Hyperion at all (absent from
+// upstream 4.1.0's route list; only a vestigial config key remains), so public XPR
+// endpoints return HTTP 404. Do not treat that 404 as "no transfers".
 // Use get_actions with the transfer filter instead; it carries the same data.
 async function getTransfers(
   account: string,
@@ -767,11 +763,14 @@ const transfers = await getTransfers('alice', { symbol: 'XPR', direction: 'in' }
 interface HyperionTransaction {
   trx_id: string;
   lib: number;
-  actions: HyperionAction[];
-  block_num: number;
-  block_time: string;
-  irreversible: boolean;
+  cached_lib: boolean;
+  executed: boolean;
+  actions: HyperionAction[];   // block_num / @timestamp live on each action
+  last_indexed_block: number;
+  last_indexed_block_time: string;
+  query_time_ms: number;
 }
+// Irreversible when actions[0].block_num <= lib
 
 async function getTransaction(txId: string): Promise<HyperionTransaction> {
   const response = await fetch(
@@ -785,17 +784,24 @@ async function getTransaction(txId: string): Promise<HyperionTransaction> {
 
 ```typescript
 interface AccountState {
-  account_name: string;
-  total_resources: {
-    net_weight: string;
-    cpu_weight: string;
-    ram_bytes: number;
+  account: {                    // the nodeos get_account object, nested
+    account_name: string;
+    total_resources: {
+      net_weight: string;
+      cpu_weight: string;
+      ram_bytes: number;
+    };
+    [key: string]: unknown;
   };
+  actions: HyperionAction[];    // most recent actions
+  links: unknown[];             // linkauth entries
   tokens: Array<{
     symbol: string;
     amount: number;
     contract: string;
+    precision: number;
   }>;
+  total_actions: number;
 }
 
 async function getAccountState(account: string): Promise<AccountState> {
@@ -811,7 +817,7 @@ async function getAccountState(account: string): Promise<AccountState> {
 ```typescript
 interface TokenBalance {
   symbol: string;
-  amount: string;
+  amount: number;     // numeric, not a string
   contract: string;
   precision: number;
 }
@@ -826,7 +832,7 @@ async function getAllBalances(account: string): Promise<TokenBalance[]> {
 
 // Returns all tokens the account holds
 const balances = await getAllBalances('alice');
-// [{ symbol: 'XPR', amount: '1000.0000', contract: 'eosio.token', precision: 4 }, ...]
+// [{ symbol: 'XPR', amount: 1000, contract: 'eosio.token', precision: 4 }, ...]
 ```
 
 ### Get Accounts by Public Key
@@ -883,7 +889,7 @@ Base URL: `https://lightapi.eosamsterdam.net`
 | `/api/balances/proton/{account}` | All token balances |
 | `/api/tokenbalance/proton/{account}/{contract}/{symbol}` | Specific token balance |
 | `/api/key/proton/{public_key}` | Accounts by key |
-| `/api/topholders/proton/{contract}/{symbol}/{limit}` | Top token holders |
+| `/api/topholders/proton/{contract}/{symbol}/{limit}` | Top token holders — `limit` must be 10–1000; returns an array of `[account, amount]` pairs |
 | `/api/accinfo/proton/{account}` | Detailed account info |
 | `/api/usercount/proton` | Total registered users |
 
@@ -894,7 +900,7 @@ interface LightAPIBalance {
   contract: string;
   currency: string;
   amount: string;
-  decimals: number;
+  decimals: string;   // e.g. "4" — a string, parseInt when needed
 }
 
 async function getLightAPIBalances(account: string): Promise<LightAPIBalance[]> {
@@ -920,8 +926,8 @@ async function getTokenBalance(
   const response = await fetch(
     `https://lightapi.eosamsterdam.net/api/tokenbalance/proton/${account}/${contract}/${symbol}`
   );
-  const data = await response.json();
-  return data.balance ?? '0';
+  // Returns a bare number as text/plain (e.g. "0.0003"), not JSON
+  return (await response.text()).trim();
 }
 
 // Get XPR balance
@@ -936,10 +942,11 @@ const usdcBalance = await getTokenBalance('alice', 'xtokens', 'XUSDC');
 ```typescript
 async function getAccountsByKey(publicKey: string): Promise<string[]> {
   const response = await fetch(
-    `https://lightapi.eosamsterdam.net/api/key/proton/${publicKey}`
+    `https://lightapi.eosamsterdam.net/api/key/${publicKey}`   // no network segment; legacy EOS... key format
   );
+  // Response is keyed by network: { proton: { accounts: { <name>: [{perm, threshold, auth}] } }, ... }
   const data = await response.json();
-  return data.accounts?.map((a: any) => a.account_name) ?? [];
+  return Object.keys(data.proton?.accounts ?? {});
 }
 ```
 
@@ -954,13 +961,14 @@ interface TokenHolder {
 async function getTopHolders(
   contract: string,
   symbol: string,
-  limit: number = 100
+  limit: number = 100   // must be 10–1000 (outside that range → 400 Invalid count)
 ): Promise<TokenHolder[]> {
   const response = await fetch(
     `https://lightapi.eosamsterdam.net/api/topholders/proton/${contract}/${symbol}/${limit}`
   );
-  const data = await response.json();
-  return data.accounts;
+  // Response is a JSON array of [account, amount] pairs
+  const data: [string, string][] = await response.json();
+  return data.map(([account, amount]) => ({ account, amount }));
 }
 
 // Get top 100 XPR holders
@@ -974,8 +982,8 @@ async function getTotalUsers(): Promise<number> {
   const response = await fetch(
     'https://lightapi.eosamsterdam.net/api/usercount/proton'
   );
-  const data = await response.json();
-  return data.count;
+  // Returns a bare integer as text/plain
+  return parseInt(await response.text(), 10);
 }
 ```
 
@@ -1063,7 +1071,7 @@ class XPRQueryService {
     return response.json();
   }
 
-  // /v2/history/get_transfers is NOT deployed on XPR Hyperion endpoints (404) —
+  // /v2/history/get_transfers does not exist in Hyperion (public endpoints 404) —
   // use get_actions with the transfer filter and map act.data.
   async getTransfers(account: string, symbol?: string, limit = 100) {
     const url = new URL(`${this.hyperionBase}/v2/history/get_actions`);

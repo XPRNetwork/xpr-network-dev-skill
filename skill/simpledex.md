@@ -13,11 +13,11 @@ SimpleDEX is a non-custodial decentralized exchange and token launch platform on
 | RPC endpoint | `https://api.protonnz.com` |
 | Analytics API | `https://indexer.protonnz.com` |
 | Frontend | `https://simpledex.fun` (canonical) |
-| Legacy frontend | `https://dex.protonnz.com` (mirrors simpledex.fun; emits `canonical = simpledex.fun` and will 301 once Google has fully indexed the new domain) |
+| Legacy frontend | `https://dex.protonnz.com` (308-redirects to simpledex.fun) |
 | Treasury | `dex.protonnz` |
 | Official X | [@SimpleDEXFun](https://x.com/SimpleDEXFun) (auto-posts every new launch) |
 
-All token amounts use integers with 4 decimal places. `1.0000 XPR` = raw value `10000`. Multiply human amounts by 10,000.
+XPR and launched tokens use 4 decimal places: `1.0000 XPR` = raw value `10000`, so multiply human amounts by 10,000. Pools can also hold 6-decimal tokens (XMD, XUSDC) whose raw units are ×1,000,000 — read `tokenASymbol`/`tokenBSymbol` from the pool row before scaling.
 
 > **Agent guide:** SimpleDEX publishes a full AI-agent guide at
 > `https://simpledex.fun/llms.txt` (index) plus per-topic files
@@ -235,7 +235,7 @@ proton action simplelaunch sell \
   myaccount@active
 ```
 
-Parameters: `[seller, tokenId, tokenAmount, minXprOut]`. `tokenAmount` is raw (multiply human × 10000); `minXprOut` is also raw.
+Parameters: `[seller, tokenId, tokenAmount, minXpr]` (ABI field name is `minXpr`). `tokenAmount` is raw (multiply human × 10000); `minXpr` is also raw.
 
 ### Bonding Curve Pricing
 
@@ -309,7 +309,7 @@ proton action simplelaunch updatetoken \
 
 Creator sets for free via `setcommunit`. Non-creators pay 100,000 XPR via deposit + `updcommunit`. Fields: description, website, telegram, twitter, discord, banner image URL.
 
-### Admin Moderation (require `protonnz@active` via msig)
+### Admin Moderation (contract authority: `simplesetup@active`, or the 2-of-4 owner msig)
 
 | Action | Effect |
 |--------|--------|
@@ -340,7 +340,7 @@ CLI gotcha: the action name is `reservename`, not `reserve` — the latter fails
 | **Creation fee** | **20,000 XPR** (live in `simplelaunch::fees.creationFee` — always read before charging) |
 | Creator-only window | 60 seconds |
 | Early-bird cap | 5,000 XPR per tx for 5 minutes |
-| Token precision | 4 decimals (all amounts × 10000) |
+| Token precision | 4 decimals for XPR and launched tokens (× 10000); 6-decimal quote tokens such as XMD are × 1,000,000 |
 
 ---
 
@@ -363,7 +363,7 @@ CLI gotcha: the action name is `reservename`, not `reserve` — the latter fails
 
 ## Resources
 
-- **Frontend:** https://simpledex.fun (canonical) — legacy `dex.protonnz.com` still serves and emits the new canonical
+- **Frontend:** https://simpledex.fun (canonical) — legacy `dex.protonnz.com` 308-redirects here
 - **Agent Guide (index):** https://simpledex.fun/llms.txt
 - **Agent Guide (full):** https://simpledex.fun/llms-full.txt
 - **Topic files (recommended — smaller for chunked agent reads):**

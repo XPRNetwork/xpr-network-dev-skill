@@ -29,7 +29,7 @@ XPR Network runs on **Antelope/Leap** (formerly EOSIO). Node types include:
 ### Software
 
 - **OS:** Ubuntu 22.04 LTS
-- **Leap Version:** 5.0.3 or later (as of Sept 2025)
+- **nodeos:** Leap 5.0.3 (the final Leap release, Oct 2024) or its successor line Spring 1.2.x — match `server_version_string` reported by mainnet APIs (v5.0.0–v5.0.3 as of Sept 2026)
 
 Verify OS version:
 ```bash
@@ -127,7 +127,6 @@ p2p-peer-address = p2p-protonmain.saltant.io:9876
 p2p-peer-address = protonp2p.ledgerwise.io:23877
 p2p-peer-address = proton-seed.eosiomadrid.io:9876
 p2p-peer-address = proton.genereos.io:9876
-p2p-peer-address = proton-public.neftyblocks.com:19876
 p2p-peer-address = p2p-proton.eosarabia.net:9876
 p2p-peer-address = p2p.luminaryvisn.com:9876
 ```
@@ -203,7 +202,6 @@ p2p-peer-address = protontest.eu.eosamsterdam.net:9905
 p2p-peer-address = proton-testnet.cryptolions.io:9874
 p2p-peer-address = testnet-p2p.xprlabs.org:9870
 p2p-peer-address = p2p-testnet-proton.eosarabia.net:9876
-p2p-peer-address = proton-p2p-testnet.neftyblocks.com:19876
 ```
 
 ### Testnet Resources

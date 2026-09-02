@@ -5,12 +5,14 @@ This guide covers wallet connection and transaction signing for web applications
 ## Installation
 
 ```bash
-npm install @proton/web-sdk @proton/link
+npm install @proton/web-sdk@4 @proton/link@4
 # or
-yarn add @proton/web-sdk @proton/link
+yarn add @proton/web-sdk@4 @proton/link@4
 ```
 
 **Important:** The `@proton/link` package is required for mobile wallet support. See [Mobile Wallet Support](#mobile-wallet-support) for details.
+
+> **Version note:** this module documents the **4.x** line. The npm `latest` tag is `5.1.0-rc-4` (5.0.0 GA April 2026), which changes the options shape: `appName`/`appLogo` move to `uiOptions.appInfo.{name,logo,logoRounded}`, `customStyleOptions` is replaced by `uiOptions.theme`/`themes`, and `selectorOptions` keeps only `walletType` and `enabledWalletTypes`. Pin `@4` unless you are targeting 5.x deliberately, and match `@proton/link` to the same major.
 
 ## Quick Start
 
@@ -55,7 +57,7 @@ const result = await session.transact({
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `endpoints` | `string[]` | Yes | Array of RPC endpoints (multiple for fault tolerance) |
-| `chainId` | `string` | No | Chain ID (defaults to mainnet) |
+| `chainId` | `string` | No | Chain ID; if omitted it is fetched from the first endpoint's `get_info` |
 | `storage` | `LinkStorage` | No | Custom storage adapter |
 | `storagePrefix` | `string` | No | Prefix for storage keys (default: `proton-storage`) |
 | `restoreSession` | `boolean` | No | Restore previous session without wallet selector |
@@ -65,11 +67,11 @@ const result = await session.transact({
 | Key | Type | Description |
 |-----|------|-------------|
 | `requestAccount` | `string` | **Required for mobile.** Your dApp's account name - used for deep link callbacks so mobile app knows where to return after signing |
-| `backButton` | `boolean` | Show back button in modal (default: true) |
+| `requestStatus` | `boolean` | Show request status UI while signing (default: true) |
 
 > **Important**: Without `requestAccount`, the WebAuth mobile app will sign transactions but won't return to your browser. Always set this to your contract or dApp account name.
 
-### selectorOptions (optional)
+### selectorOptions (optional, 4.x shape)
 
 | Key | Type | Description |
 |-----|------|-------------|
@@ -161,7 +163,7 @@ class ProtonService {
 
   async logout(): Promise<void> {
     if (this.link && this.session) {
-      await this.link.removeSession('myapp', this.session.auth);
+      await this.link.removeSession('myapp', this.session.auth, this.session.chainId);
     }
     this.link = null;
     this.session = null;
@@ -399,7 +401,7 @@ export function ProtonProvider({ children }: { children: React.ReactNode }) {
 
   async function logout() {
     if (link && session) {
-      await link.removeSession('myapp', session.auth);
+      await link.removeSession('myapp', session.auth, session.chainId);
     }
     setLink(null);
     setSession(null);
@@ -487,7 +489,7 @@ The `@proton/link` package provides the transport layer for mobile deep linking.
 ### Installation
 
 ```bash
-npm install @proton/web-sdk @proton/link
+npm install @proton/web-sdk@4 @proton/link@4
 ```
 
 ### Import Pattern
@@ -536,7 +538,7 @@ This pattern ensures both packages are fully loaded and transport handlers are r
 
 For mobile wallet to work correctly, ensure ALL of these:
 
-1. **Install both packages**: `npm install @proton/web-sdk @proton/link`
+1. **Install both packages**: `npm install @proton/web-sdk@4 @proton/link@4`
 
 2. **Use dynamic imports with Promise.all** (not static imports):
    ```typescript
@@ -568,7 +570,7 @@ For mobile wallet to work correctly, ensure ALL of these:
 | Mobile stuck on "Processing..." | Missing `@proton/link` or static import | Use dynamic import pattern |
 | App signs but doesn't return to browser | `requestAccount` empty or missing | Set to your contract name |
 | Only browser wallet shown | `enabledWalletTypes` missing `proton` | Add `['webauth', 'proton']` |
-| "Unknown requestor" error | Missing `@proton/link` | Install and import the package |
+| "Unknown Requestor" shown in the wallet | `transportOptions.requestAccount` not set | Set `requestAccount` to your dApp/contract account |
 
 ### Safari iOS Popup Blocker
 
@@ -582,8 +584,8 @@ Safari iOS blocks popups by default, which prevents the WebAuth browser wallet f
 
 ### Recommended Versions
 
-- `@proton/web-sdk@^4.4.1` or later
-- `@proton/link@^3.2.3-27` or later
+- `@proton/web-sdk@^4.4.1` (4.x line; 5.x changes the options shape — see the version note at the top)
+- `@proton/link` — match the major your `@proton/web-sdk` depends on (`^4.4.1` for web-sdk 4.x); do not pin `3.2.3-x`
 
 ---
 

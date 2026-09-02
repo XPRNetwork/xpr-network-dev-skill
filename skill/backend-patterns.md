@@ -48,7 +48,7 @@ proton chain:set proton              # or proton-test
 proton key:add                       # interactive — paste key once, stored encrypted
 
 # Verify
-proton key:list                      # shows public keys + accounts, NEVER prints private values
+proton key:list                      # public keys + accounts only; private values print only with --reveal-private
 ```
 
 After this, the key lives in the CLI's encrypted keychain. Your `.env` does NOT need `XPR_PRIVATE_KEY`.
@@ -91,8 +91,7 @@ Only use this if you have a specific reason — testing, ephemeral keys you don'
 <summary>Legacy: key in process memory (NOT recommended)</summary>
 
 ```typescript
-import { JsonRpc, Api } from '@proton/js';
-import { JsSignatureProvider } from 'eosjs/dist/eosjs-jssig';
+import { JsonRpc, Api, JsSignatureProvider } from '@proton/js';
 
 // ⚠️  Key sits in process memory. Reachable from every tool, log, prompt.
 const PRIVATE_KEY = process.env.XPR_PRIVATE_KEY;
@@ -107,7 +106,7 @@ const api = new Api({
 });
 ```
 
-The `@xpr-agents/openclaw` v0.3.0+ agent runner will **refuse to start** if `XPR_PRIVATE_KEY` is set in env, on the assumption that you intended to use the CLI keychain and forgot to migrate. If you genuinely want the legacy pattern, you're outside the agent runner's supported envelope and should build your own service.
+The `create-xpr-agent` starter (the agent-runner scaffold that wraps `@xpr-agents/openclaw`) **refuses to start** if `XPR_PRIVATE_KEY` is set in env — the check lives in the scaffold's `start.sh`, not in the openclaw package, and `createCliSession` itself does not check. The assumption is that you intended to use the CLI keychain and forgot to migrate. If you genuinely want the legacy pattern, you're outside the starter's supported envelope and should build your own service.
 
 </details>
 
@@ -117,17 +116,14 @@ The `@xpr-agents/openclaw` v0.3.0+ agent runner will **refuse to start** if `XPR
 
 ### Basic Transaction
 
-These helpers take a `session` argument so they work with whatever signing path you set up in **Basic Configuration** — `createCliSession`'s `session` (recommended) drops in here. `blocksBehind` / `expireSeconds` are accepted by the CLI-backed `transact()` but ignored under the hood; `proton transaction:push` manages tx headers internally.
+These helpers take a `session` argument so they work with whatever signing path you set up in **Basic Configuration** — `createCliSession`'s `session` (recommended) drops in here. `session.link.transact()` takes a single `{ actions }` argument — there is no options parameter, and `proton transaction:push` manages tx headers (`blocksBehind` / `expireSeconds`) internally. (The two-argument `transact(tx, options)` shape exists only on `createCliApi().api`, where the options are accepted and ignored.)
 
 ```typescript
 import type { ProtonSession } from '@xpr-agents/sdk';
 
 async function sendTransaction(session: ProtonSession, actions: any[]) {
   try {
-    const result = await session.link.transact(
-      { actions },
-      { blocksBehind: 3, expireSeconds: 30 }
-    );
+    const result = await session.link.transact({ actions });
     return { success: true, transaction_id: result.transaction_id };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -222,10 +218,7 @@ class XPRBackendService {
       try {
         // session.link.transact shells out to `proton transaction:push`.
         // Same interface as eosjs Api.transact, just CLI-backed signing.
-        const result = await this.session.link.transact(
-          { actions },
-          { blocksBehind: 3, expireSeconds: 30 }
-        );
+        const result = await this.session.link.transact({ actions });
         return { success: true, transaction_id: result.transaction_id };
       } catch (error: any) {
         const isRetryable = this.isRetryableError(error);
@@ -486,18 +479,15 @@ async function resolveExpiredChallenges() {
     const endTime = challenge.started_at + challenge.duration;
 
     if (now >= endTime) {
-      // Get current oracle price
-      const price = await getOraclePrice(challenge.oracle_index);
-
-      // Resolve the challenge
+      // Resolve the challenge — the contract reads the oracle price itself;
+      // resolve(challenge_id: uint64, resolver: name) takes no price argument.
       await sendTransaction([{
         account: 'pricebattle',
         name: 'resolve',
         authorization: [{ actor: 'resolver', permission: 'active' }],
         data: {
           challenge_id: challenge.id,
-          resolver: 'resolver',
-          end_price: price
+          resolver: 'resolver'
         }
       }]);
 
@@ -713,10 +703,7 @@ async function safeTransact(
   actions: any[]
 ): Promise<TransactionResult> {
   try {
-    const result = await session.link.transact(
-      { actions },
-      { blocksBehind: 3, expireSeconds: 30 }
-    );
+    const result = await session.link.transact({ actions });
     return { success: true, transaction_id: result.transaction_id };
 
   } catch (error: any) {
@@ -842,8 +829,8 @@ app.get('/health', async (req, res) => {
 ```bash
 # XPR Network Configuration
 # Note: NO XPR_PRIVATE_KEY here. The proton CLI handles signing from its
-# encrypted keychain. If you set XPR_PRIVATE_KEY anyway, the agent runner
-# refuses to start.
+# encrypted keychain. If you set XPR_PRIVATE_KEY anyway, the create-xpr-agent
+# starter's start.sh refuses to start.
 XPR_ACCOUNT=myaccount
 XPR_RPC_ENDPOINT=https://proton.eosusa.io
 XPR_CHAIN_ID=384da888112027f0321850a169f737c33e53b388aad48b5adace4bab97f437e0

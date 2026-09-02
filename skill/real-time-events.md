@@ -16,7 +16,7 @@ XPR Network provides several ways to get real-time updates:
 
 ## Hyperion Streaming API
 
-Hyperion streams actions and table deltas over **socket.io** (not a raw WebSocket). Every public XPR Network Hyperion advertises it (`/v2/health` → `"streaming":{"enable":true,"traces":true,"deltas":true}`), but as of **2026-09-01** the reality on the public endpoints is:
+Hyperion streams actions and table deltas over **socket.io** (not a raw WebSocket). Most public XPR Network Hyperions advertise it (`/v2/health` → `"streaming":{"enable":true,"traces":true,"deltas":true}`; bloxprod reports `traces:false`), but as of **2026-09-01** the reality on the public endpoints is:
 
 | Endpoint | Connect via socket.io `path: '/stream'` | Live/replay data delivered in tests |
 |---|---|---|
@@ -56,7 +56,7 @@ const client = new HyperionStreamClient({ endpoint: 'https://proton.eosusa.io' }
 client.on('error', (e) => console.error('stream error:', e));
 await client.connect();
 
-// Hyperion rejects unfiltered requests with "request too broad" — you MUST
+// Hyperion rejects unscoped requests (ack `{ status: 'FAIL', reason: 'invalid request' }`) —
 // narrow by `account` (the notified account) or otherwise be specific.
 const transfers = await client.streamActions({
   contract: 'eosio.token',
@@ -67,7 +67,8 @@ const transfers = await client.streamActions({
   filters: [],             // optional field filters, e.g. [{ field: 'data.to', value: 'dex' }]
 });
 
-transfers.on('data', (msg) => {
+// Stream objects emit 'message' (plus 'start' / 'error'); 'data' is a client-level event
+transfers.on('message', (msg) => {
   const { act, block_num } = msg.content;
   console.log(block_num, act.data);   // { from, to, quantity, memo }
 });
@@ -77,7 +78,7 @@ const deltas = await client.streamDeltas({
   code: 'oracles', table: 'data', scope: 'oracles', payer: '',
   start_from: 0, read_until: 0,
 });
-deltas.on('data', (msg) => console.log('oracle update', msg.content));
+deltas.on('message', (msg) => console.log('oracle update', msg.content));
 ```
 
 ### Raw `socket.io-client` (if you can't use the official client)
@@ -94,7 +95,10 @@ const socket = io('https://proton.eosusa.io', {
 });
 
 socket.on('connect',       () => console.log('connected', socket.id));
-socket.on('handshake',     (m) => console.log('handshake', m));   // { event: 'handshake', chain: 'proton' }
+// Hyperion 3.x servers (e.g. eosusa) deliver the handshake as a 'message' with event:'handshake';
+// 4.x servers emit a dedicated 'handshake' event with { chain, chain_id } — listen for both
+socket.on('message',       (m) => m.event === 'handshake' && console.log('handshake', m));
+socket.on('handshake',     (m) => console.log('handshake', m));
 socket.on('lib_update',    (m) => console.log('LIB', m.block_num));
 socket.on('fork_event',    (m) => console.warn('fork', m));
 socket.on('message',       (m) => console.log('stream message', m));
@@ -105,7 +109,7 @@ Stream requests are sent as socket.io events with acknowledgements (`action_stre
 
 ### Thin adapter used by the examples in this doc
 
-The notification-service, database-sync, and webhook examples further down use this small callback-style wrapper over the official client, so they read the same way regardless of transport details. Note that `account` is **required** for action streams — Hyperion rejects unscoped requests as "too broad".
+The notification-service, database-sync, and webhook examples further down use this small callback-style wrapper over the official client, so they read the same way regardless of transport details. Note that `account` is **required** for action streams — Hyperion acks unscoped requests with `status: FAIL, reason: invalid request`.
 
 ```typescript
 import { HyperionStreamClient } from '@eosrio/hyperion-stream-client';
@@ -124,7 +128,7 @@ export class HyperionStream {
   /** Stream `contract::action` traces where `account` is notified. Callback gets the action with trx_id/block_num/@timestamp attached. */
   async subscribeActions(contract: string, action: string, account: string, cb: (action: any) => void) {
     const stream = await this.client.streamActions({ contract, action, account, start_from: 0, read_until: 0, filters: [] });
-    stream.on('data', (msg: any) => {
+    stream.on('message', (msg: any) => {
       const c = msg.content;
       cb({ ...c.act, trx_id: c.trx_id, block_num: c.block_num, '@timestamp': c['@timestamp'] });
     });
@@ -134,7 +138,7 @@ export class HyperionStream {
   /** Stream table deltas for `code::table` (scope defaults to the contract). Callback gets { present, data, primary_key, ... }. */
   async subscribeDeltas(code: string, table: string, cb: (delta: any) => void, scope: string = code) {
     const stream = await this.client.streamDeltas({ code, table, scope, payer: '', start_from: 0, read_until: 0 });
-    stream.on('data', (msg: any) => cb(msg.content));
+    stream.on('message', (msg: any) => cb(msg.content));
     return stream;
   }
 }
@@ -688,7 +692,7 @@ stream.subscribeActions('eosio.token', 'transfer', 'merchant', (action) => {
 ### Hyperion Stream Requests (via `@eosrio/hyperion-stream-client`)
 
 ```typescript
-// Action stream — `account` is required in practice (server rejects broad requests)
+// Action stream — `account` is required in practice (server acks unscoped requests with status FAIL)
 client.streamActions({ contract: 'eosio.token', action: 'transfer', account: 'dex', start_from: 0, read_until: 0, filters: [] });
 
 // Delta stream
@@ -738,16 +742,15 @@ TypeScript library for real-time XPR Network streaming via State History Plugin.
 - Contract whitelisting and granular filtering
 - Winston logging with configurable levels
 
-**Installation:**
+**Installation:** not published to npm (the repo's package name `@rockerone/block-stream-client` is unpublished too) — clone and import from the checkout:
 ```bash
-npm install @aspect/block-stream
-# or
-bun install @aspect/block-stream
+git clone https://github.com/SuperstrongBE/block-stream
+cd block-stream && bun install
 ```
 
 **Example:**
 ```typescript
-import { BlockStreamClient } from '@aspect/block-stream';
+import { BlockStreamClient } from './index';   // from the cloned repo
 
 const client = new BlockStreamClient({
   socketAddress: 'ws://proton-ship.eosusa.io:8080',

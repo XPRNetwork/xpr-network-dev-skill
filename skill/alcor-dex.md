@@ -16,7 +16,7 @@ Alcor is a multi-chain (WAX, EOS, Telos, XPR Network) DEX that ships **both** an
 | XPR token | `eosio.token` (4,XPR) |
 | API base | `https://proton.alcor.exchange/api/v2` |
 | Frontend | `https://proton.alcor.exchange` |
-| Market creation fee | `50,000.0000 XPR` |
+| Market creation fee | `2,000.0000 XPR` on mainnet (doubled if the base token is not XPR; `50,000 XPR` is the testnet value) — paid by transferring the fee to `alcor` with memo `new_market|0.0000 BASE@contract|0.000000 QUOTE@contract` |
 | Fee recipient | `avral` |
 | Open-source UI | https://github.com/alcorexchange/alcor-ui |
 | Swap SDK | https://github.com/alcorexchange/alcor-v2-sdk (`@alcorexchange/alcor-swap-sdk`) |
@@ -112,14 +112,14 @@ All reads use standard `get_table_rows`. Fallback RPCs: `https://proton.greymass
 
 ### `alcor` (order book)
 
-> **Naming gotcha:** The on-chain `markets` table uses **FX-style naming** — for market id 2 (XUSDT/XPR), the `base_token` is XUSDT and the `quote_token` is XPR. The Alcor REST API's `ticker_id` uses the **opposite, standard crypto-DEX naming** — the same market's ticker is `xusdt-xtokens_xpr-eosio.token` where `base_currency = xusdt-xtokens` and `target_currency = xpr-eosio.token`. Same direction, just different field names. Use the API's `market_id` field to cross-reference.
+> **Naming gotcha:** The on-chain `markets` table uses **FX-style naming** — for market id 2 (XUSDT/XPR), the `base_token` is XUSDT and the `quote_token` is XPR. The Alcor REST API's `ticker_id` uses the **opposite, standard crypto-DEX naming** — the same market's ticker is `xpr-eosio.token_xusdt-xtokens` where `base_currency = xpr-eosio.token` (the on-chain `quote_token`) and `target_currency = xusdt-xtokens` (the on-chain `base_token`). The API swaps base/quote relative to the table. Use the API's `market_id` field to cross-reference.
 
 | Table | Scope | Description |
 |-------|-------|-------------|
 | `markets` | `alcor` | `id`, `base_token {sym, contract}`, `quote_token {sym, contract}`, `min_buy`, `min_sell`, `frozen`, `fee` |
 | `buyorder` | `<market_id>` | `id`, `account`, `bid` (quote offered), `ask` (base wanted), `unit_price`, `timestamp` |
 | `sellorder` | `<market_id>` | `id`, `account`, `bid` (base offered), `ask` (quote wanted), `unit_price`, `timestamp` |
-| `account` | `alcor` | User balances held inside the DEX |
+| `account` | `alcor` | Per-account open-order index (`buyorders`/`sellorders` as `[order_id, market_id]` pairs) plus `orders_total`/`orders_limit` — not balances |
 | `settings` | `alcor` | Global settings |
 | `freeorders` | `alcor` | Free-CPU order tracking |
 | `ban` | `alcor` | Ban list |
@@ -213,7 +213,7 @@ proton action tokencreate transfer \
 > |------------|--------------|
 > | **Empty** (`memo: ""`) | Transfer **reverts**. Alcor doesn't accept empty-memo deposits — the transfer fails entirely and funds stay in your wallet. **Safer than MetalX's `dex` contract, which silently strands empty-memo deposits.** |
 > | **Wrong format** (missing `@contract`, bad amount, unknown symbol) | Transfer reverts with an assertion failure naming the parse error. Funds stay in your wallet. |
-> | **Right format, market doesn't exist** | Transfer reverts. Open the market first via `alcor::openmarket` (50,000 XPR fee), or use an existing market. |
+> | **Right format, market doesn't exist** | Transfer reverts. Open the market first by transferring the creation fee (2,000 XPR mainnet, ×2 if base ≠ XPR) to `alcor` with memo `new_market|0.0000 BASE@contract|0.000000 QUOTE@contract`, or use an existing market. |
 > | **Right format, correct market, price violates min order size** | Transfer reverts. Check `markets` table for `min_buy` / `min_sell` thresholds. |
 >
 > Net effect: Alcor **fails closed** on bad memos — funds aren't stranded, but the transfer doesn't go through either. Verify your memo format before relying on a placed order existing.
@@ -239,14 +239,14 @@ proton action alcor cancelsell \
   '{"executor":"trader","market_id":2,"order_id":123}' trader
 ```
 
-Look up your `order_id` via `get_table_rows` on `buyorder` / `sellorder` with `scope` = market id (as a string), or via the `/account/{name}/orders` REST endpoint.
+Look up your `order_id` via `get_table_rows` on `buyorder` / `sellorder` with `scope` = market id (as a string). (There is no `/account/{name}/orders` REST endpoint; `/account/{name}/deals` gives fill history.)
 
 ### Direct actions (verified from ABI)
 
 ```
 alcor::cancelbuy   { executor: name, market_id: uint64, order_id: uint64 }
 alcor::cancelsell  { executor: name, market_id: uint64, order_id: uint64 }
-alcor::openmarket  { base_con: name, base_sym: asset, quote_con: name, quote_sym: asset }   # 50,000 XPR fee
+alcor::openmarket  { base_con: name, base_sym: asset, quote_con: name, quote_sym: asset }   # called by the contract after the fee transfer; the UI never calls it directly
 alcor::buymatch    # internal matching engine
 alcor::sellmatch   # internal matching engine
 alcor::setmins     # admin: set min order sizes
@@ -291,7 +291,7 @@ Response (illustrative — pool IDs rotate; **do not hard-code**):
 }
 ```
 
-> **Pool IDs rotate.** Alcor adds, retires, and migrates pools over time. The `route` array, `executionPrice`, and any pool-ID-keyed memo are **session-derived** — call `/api/v2/swap/route` for every quote and use the IDs it returns in that response's `memo`. Cached IDs from a previous session can route through a pool that no longer exists, causing the transfer to revert at `swap.alcor`.
+> **Pool IDs rotate.** Alcor adds, retires, and migrates pools over time. The `route` array, `executionPrice`, and any pool-ID-keyed memo are **session-derived** — call `/api/v2/swapRouter/getRoute` for every quote and use the IDs it returns in that response's `memo`. Cached IDs from a previous session can route through a pool that no longer exists, causing the transfer to revert at `swap.alcor`.
 
 Then transfer with the returned memo:
 
@@ -353,7 +353,7 @@ npm install @alcorexchange/alcor-swap-sdk
 ```
 
 ```ts
-import { Pool, Token, computePoolAddress } from '@alcorexchange/alcor-swap-sdk'
+import { Pool, Token, Route, Trade, computeAllRoutes, getBestSwapRoute } from '@alcorexchange/alcor-swap-sdk'
 
 // Fetch pool row from get_table_rows, then construct a Pool instance
 // to compute prices, input→output amounts, multi-hop routes, etc.

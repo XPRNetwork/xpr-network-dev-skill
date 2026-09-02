@@ -41,11 +41,13 @@ Account: mycontract
 ### Via CLI
 
 ```bash
-# Create new account (requires existing account to pay)
+# Free account via the Metal identity API (prompts for email + verification
+# code and a private key, or generates one; names must be 4-12 chars)
 proton account:create newaccount
 
-# Create with specific key
-proton account:create newaccount --key PUB_K1_xxxxx
+# Account paid for by an existing account you control
+# (-c creator/payer, -k public key, -r RAM bytes, minimum 3000)
+proton account:create-funded newaccount -c payeracct -k PUB_K1_xxxxx -r 3000
 
 # Create on testnet
 proton chain:set proton-test
@@ -239,19 +241,18 @@ proton action eosio updateauth '{
 
 ```bash
 # Create proposal
-proton msig:propose myproposal '{
-  "actions": [{
-    "account": "eosio.token",
-    "name": "transfer",
-    "authorization": [{"actor": "multisig", "permission": "active"}],
-    "data": {
-      "from": "multisig",
-      "to": "recipient",
-      "quantity": "100.0000 XPR",
-      "memo": "Approved payment"
-    }
-  }]
-}' proposer
+# ACTIONS is a JSON *array* of actions (not an object with an "actions" key)
+proton msig:propose myproposal '[{
+  "account": "eosio.token",
+  "name": "transfer",
+  "authorization": [{"actor": "multisig", "permission": "active"}],
+  "data": {
+    "from": "multisig",
+    "to": "recipient",
+    "quantity": "100.0000 XPR",
+    "memo": "Approved payment"
+  }
+}]' proposer
 ```
 
 ### Approve Proposal
@@ -294,7 +295,7 @@ const proposeActions = [{
       { actor: 'bob', permission: 'active' }
     ],
     trx: {
-      expiration: '2025-12-31T23:59:59',
+      expiration: new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 19), // 7 days out; a past date is rejected
       ref_block_num: 0,
       ref_block_prefix: 0,
       max_net_usage_words: 0,

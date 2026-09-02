@@ -40,13 +40,13 @@ git pull
 
 Your assistant will see the new content on its next conversation. No reinstall.
 
-**Server-side agent (`agent-bootstrap.sh`):** re-run the bootstrap script. It's idempotent — `git pull` on the skill checkout, `npm update` on the xpr-agents packages, no re-provisioning of the keychain.
+**Server-side agent (`agent-bootstrap.sh`):** re-run the bootstrap script. It's idempotent — `git pull` on the skill checkout, `npm install` to re-resolve the xpr-agents packages, no re-provisioning of the keychain.
 
 ```bash
 ./scripts/agent-bootstrap.sh
 ```
 
-> **Current release: v2.5.1 (September 2026).** Full release notes and version history in [`CHANGELOG.md`](./CHANGELOG.md).
+> **Current release: v2.6.0 (September 2026).** Full release notes and version history in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ### Method 1: Manual symlink (personal skill)
 
@@ -268,7 +268,7 @@ Claude will load specialized modules on demand based on your queries.
 ### Server-Side Agents
 
 - Deploying an autonomous XPR Network agent on Pinata (hosted OpenClaw) or self-hosted runtimes — see [`agent-bootstrap.md`](./agent-bootstrap.md)
-- Capabilities layer: 72 MCP tools across identity, reputation, validation, escrow, A2A via `@xpr-agents/openclaw`
+- Capabilities layer: 75 MCP tools across identity, reputation, validation, escrow, A2A via `@xpr-agents/openclaw`
 - Knowledge layer: this skill, loaded into the agent workspace as on-demand reference docs
 - Idempotent provisioning script ([`scripts/agent-bootstrap.sh`](./scripts/agent-bootstrap.sh)) with PATH fixup, key-format validation, read-only smoke test
 - Non-interactive `proton key:add` for managed consoles (no TTY)
@@ -330,7 +330,7 @@ If you're touching a reference module, also include the curl / RPC call you used
 
 - **xpr-agents repo**: https://github.com/XPRNetwork/xpr-agents — `@xpr-agents/openclaw` plugin, `@xpr-agents/sdk`, agent-runner starter kit
 - **Agent registry (live)**: https://xpragents.com
-- **Pinata Agents** (hosted OpenClaw): https://docs.pinata.cloud/agents/overview.md
+- **Pinata Agents** (hosted OpenClaw): https://docs.pinata.cloud/agents/overview
 
 ## License
 

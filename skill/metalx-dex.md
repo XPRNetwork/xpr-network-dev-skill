@@ -202,7 +202,7 @@ GET /dex/v1/leaderboard/list
 ```
 
 **Query Parameters:**
-- `market_ids[]` (array, required): Market identifiers (e.g., `["1", "2"]`)
+- `market_ids` (repeatable, required): e.g. `?market_ids=1&market_ids=2` — the bracketed `market_ids[]` form returns `400 market_ids: Invalid input`
 - `from` (string, required): Start date
 - `to` (string, required): End date
 
@@ -393,7 +393,7 @@ Processes orders in the order queue across all markets.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `q_size` | uint16 | Yes | Number of orders to process |
-| `show_error_msg` | uint8 | No | `0` = suppress, `1` = show errors |
+| `show_error_msg` | bool (optional) | No | `false` = suppress, `true` = show errors (`0`/`1` accepted; same optional param exists on `processsltp`) |
 
 **Example:**
 ```json
@@ -690,7 +690,7 @@ proton_action('dex', 'process', {'q_size': 25, 'show_error_msg': 0})
 
 > **Atomicity trade-off.** The original Python example bundled all three actions into a single atomic EOSIO transaction (via `pyeoskit.generate_packed_transaction`). This rewrite runs each action as its own `proton action` call to keep the private key in the CLI keychain. If step 2 or 3 fails, step 1's deposit is recoverable via `proton action dex withdrawall '{"account":"youraccount"}' youraccount` — the funds aren't lost, they sit in the user's DEX deposit balance until withdrawn or used.
 >
-> If you need atomic multi-action signing, use the **JavaScript path above** — `createCliSession.link.transact({ actions })` bundles every action into a single on-chain transaction. If you specifically need MetalX's `/orders/submit` endpoint (e.g. for the synchronous `ordinal_order_id` in the response), no keychain path works: the endpoint wants a signed-but-not-broadcast serialized tx, which neither `createCliSession` nor `proton transaction:push` will produce. See the `<details>` legacy block under the JS Submit Order snippet for the `signatureProvider`-based escape hatch, and prefer the on-chain path plus `/orders/lifecycle` lookup unless you genuinely need the synchronous ID. `proton transaction` at the CLI level would be the obvious Python atomic equivalent, but `@proton/cli@0.1.98`'s `transaction` command is currently broken (missing `JSON.parse` on its argument; tracked upstream).
+> If you need atomic multi-action signing, use the **JavaScript path above** — `createCliSession.link.transact({ actions })` bundles every action into a single on-chain transaction. If you specifically need MetalX's `/orders/submit` endpoint (e.g. for the synchronous `ordinal_order_id` in the response), no keychain path works: the endpoint wants a signed-but-not-broadcast serialized tx, which neither `createCliSession` nor `proton transaction:push` will produce. See the `<details>` legacy block under the JS Submit Order snippet for the `signatureProvider`-based escape hatch, and prefer the on-chain path plus `/orders/lifecycle` lookup unless you genuinely need the synchronous ID. `proton transaction` at the CLI level would be the obvious Python atomic equivalent, but `@proton/cli`'s `transaction` command is still broken as of 0.1.99 (missing `JSON.parse` on its argument; tracked upstream).
 
 ### Python: Get Order Lifecycle
 

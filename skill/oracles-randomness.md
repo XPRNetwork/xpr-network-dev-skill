@@ -54,9 +54,13 @@ proton table oracles data -l 4 -u 4
 interface OracleData {
   feed_index: number;
   aggregate: {
-    d_double: string;
+    d_double: string;   // aggregate is a variant: d_string | d_uint64_t | d_double
   };
-  timestamp: string;
+  points: {             // one entry per provider submission (no top-level timestamp)
+    provider: string;
+    time: string;       // ISO time without 'Z' — append 'Z' before Date.parse
+    data: { d_double?: string };
+  }[];
 }
 
 async function getOraclePrice(feedIndex: number): Promise<number> {
@@ -85,37 +89,21 @@ const xprPrice = await getOraclePrice(3);   // XPR/USD
 ### Use Oracle in Smart Contract
 
 ```typescript
-import { Contract, Name, TableStore, check } from 'proton-tsc';
-
-// Oracle data structure
-@table("data", noabigen)
-class OracleData extends Table {
-  constructor(
-    public feed_index: u64 = 0,
-    public aggregate: OracleAggregate = new OracleAggregate()
-  ) { super(); }
-
-  @primary
-  get primary(): u64 { return this.feed_index; }
-}
-
-class OracleAggregate {
-  d_double: f64 = 0;
-}
+import { Contract, TableStore, check } from 'proton-tsc';
+// proton-tsc ships the oracle table classes: Data { feed_index, aggregate: DataVariant, points: ProviderPoint[] }.
+// `aggregate` is a variant (d_string | d_uint64_t | d_double) — a plain f64 field would mis-deserialize.
+import { Data, ORACLES_CONTRACT } from 'proton-tsc/oracles';
 
 @contract
 class MyContract extends Contract {
 
   @action("checkprice")
   checkPrice(feedIndex: u64, minPrice: u64): void {
-    // Query oracle table
-    const oracleTable = new TableStore<OracleData>(
-      Name.fromString("oracles"),
-      Name.fromString("oracles").N
-    );
+    // Query oracle table (code = scope = "oracles")
+    const oracleTable = new TableStore<Data>(ORACLES_CONTRACT, ORACLES_CONTRACT);
 
     const data = oracleTable.requireGet(feedIndex, "Oracle feed not found");
-    const price = <u64>(data.aggregate.d_double * 10000); // Convert to u64
+    const price = <u64>(data.aggregate.f64Value * 10000); // f64Value asserts the variant holds a double
 
     check(price >= minPrice, "Price below minimum");
   }
@@ -126,7 +114,7 @@ class MyContract extends Contract {
 
 - Price feeds are updated by authorized oracle providers
 - Typical update frequency: every few seconds to minutes
-- Check `timestamp` field to verify data freshness
+- Check freshness via `points[].time` (per-provider submission times) — the `data` row has no top-level timestamp
 
 ### Price Calculation Tips
 
@@ -375,9 +363,9 @@ This example demonstrates a more complex RNG use case with weighted symbol selec
 import {
   Contract, Table, TableStore, Name, Asset,
   InlineAction, PermissionLevel, ActionData,
-  check, requireAuth, currentTimeSec, Checksum256,
-  transfer
+  check, requireAuth, currentTimeSec, Checksum256, Symbol
 } from 'proton-tsc';
+import { sendTransferToken } from 'proton-tsc/token';
 
 // Pending game tracking
 @table("games")
@@ -490,7 +478,7 @@ class SlotMachine extends Contract {
 
     // Pay winner
     if (payout > 0) {
-      transfer(this.receiver, game.player,
+      sendTransferToken(Name.fromString("eosio.token"), this.receiver, game.player,
         new Asset(payout, new Symbol("XPR", 4)), "Slot win!");
     }
   }
@@ -594,13 +582,13 @@ class SlotMachine extends Contract {
 For lower-stakes applications, you can use block data for pseudo-randomness:
 
 ```typescript
-import { currentBlock, currentTimeSec, taposBlockPrefix } from 'proton-tsc';
+import { currentBlockNum, currentTimeSec, taposBlockPrefix } from 'proton-tsc';
 
 // WARNING: This is predictable by block producers!
 // Only use for low-value, non-critical randomness
 
 function pseudoRandom(seed: u64): u64 {
-  const blockNum = currentBlock();
+  const blockNum = currentBlockNum();
   const blockPrefix = taposBlockPrefix();
   const time = currentTimeSec();
 
@@ -658,7 +646,8 @@ async function getFreshPrice(feedIndex: number, maxAgeSeconds: number): Promise<
   }
 
   const data = rows[0];
-  const timestamp = new Date(data.timestamp).getTime();
+  // Freshness = newest provider submission (rows carry no top-level timestamp)
+  const timestamp = Math.max(...data.points.map((p: any) => Date.parse(p.time + 'Z')));
   const age = (Date.now() - timestamp) / 1000;
 
   if (age > maxAgeSeconds) {

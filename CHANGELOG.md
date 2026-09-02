@@ -6,6 +6,68 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.6.0] — 2026-09-03
+
+Full-skill accuracy pass. Every module was re-verified against live mainnet ABIs and tables, the current npm packages (`@proton/cli` 0.1.99, `@proton/web-sdk` 5.1.0-rc-4 / 4.4.2, `@proton/js` 30.1.0, `proton-tsc` 0.3.58, `@proton/vert` 0.3.24, `@xpr-agents/openclaw` 0.5.4, `@xpr-agents/sdk` 0.2.7, `@eosrio/hyperion-stream-client` 4.0.0-rc.3), upstream sources (Hyperion 4.1.0, Leap 5.0.3, proton.contracts, alcor-ui, alcor-v2-sdk), docs.metalx.com and xpragents.com/llms.txt, and ~200 URLs. About 75 confirmed inaccuracies fixed across 24 files; nothing unverified was changed. MINOR bump: substantial corrections.
+
+### Fixed — proton-tsc / contracts (`smart-contracts.md`, `testing-debugging.md`, `examples.md`, `safety-guidelines.md`, `troubleshooting.md`, `token-creation.md`, `oracles-randomness.md`)
+
+- `Singleton.get()` never returns `null` (returns a default instance); existence checks now use `getOrNull()`.
+- `TableStore` has no `getAll()` / `getBySecondaryIndex()`; secondary lookups use `getBySecondaryU64(value, index)` (single row or null).
+- `InlineAction` takes only the action name; sending is `.act(contract, permission).send(data)`. Fixed in three places.
+- No `sendInline`, `formatAsset`, `getCaller`, `transfer`, `currentBlock`, `printI`/`printU`, `getRamUsage`, or `Contract.requireRecipient` — replaced with `sendTransferToken` (`proton-tsc/token`), `Asset`, `hasAuth`-based admin lookup, `currentBlockNum`, `printi`/`printui`, and the free `requireRecipient`.
+- Oracle table in contracts: use `Data`/`DataVariant` from `proton-tsc/oracles` (`aggregate.f64Value`); a plain `f64` field mis-deserializes the variant. Off-chain `data` rows have no `timestamp` — freshness comes from `points[].time`.
+- Build outputs are named after the source file (`mycontract.contract.wasm` / `.abi`); the `.contract.ts` name is a convention, not a compiler requirement.
+- `@proton/vert`: `blockchain.createContract(name, folder)` (no `loadContract`); `addTime` takes a `TimePointSec`; bundled `eosio.token` lives in `proton-tsc/external/eosio.token`.
+- `proton action` has no `--verbose`; `stakexpr` params are `from, receiver, stake_xpr_quantity`.
+- Real nodeos error texts for expired / CPU / RAM failures, with exception names; `unable to find key` is C++ CDT text, not proton-tsc.
+- `pricebattle`: `resolve(challenge_id, resolver)` takes no price; `Challenge` has `expires_at`; the deployed contract exposes no secondary index (frontend query now scans and filters); `protonrating` admin pattern rewritten without a caller API.
+- Hyperion `get_actions` is GET-only (safety checklist curl fixed). `localStorage` cleanup clears every `proton-storage-*` key.
+- Appending a trailing `BinaryExtension<T>` field is the one supported additive table change; documented as the exception to the golden rule.
+
+### Fixed — CLI / SDK / backend (`cli-reference.md`, `web-sdk.md`, `backend-patterns.md`, `accounts-permissions.md`)
+
+- CLI store is one `proton-cli.json` under the OS config dir (`~/Library/Preferences/@proton/cli-nodejs/` on macOS, `~/.config/@proton/cli-nodejs/` on Linux); `~/.proton-cli` does not exist.
+- `proton account:create` is the free Metal-identity flow with no flags; paid creation is `account:create-funded -c -k -r`.
+- `proton transaction:push` takes **unsigned** `{actions}` JSON and signs from the keychain; bare `proton transaction '<json>'` does not parse its argument (still broken in 0.1.99).
+- `msig:propose` takes a JSON **array** of actions; msig example expiration is now computed (the old literal date had passed).
+- `key:list` hides private keys by default but `--reveal-private` prints them.
+- The `XPR_PRIVATE_KEY` refusal lives in the `create-xpr-agent` starter's `start.sh`, not in `@xpr-agents/openclaw` (fixed in three files).
+- `session.link.transact({ actions })` takes one argument; the two-arg form belongs to `createCliApi().api`.
+- `JsSignatureProvider` is exported by `@proton/js` (no `eosjs` import).
+- `@proton/web-sdk`: the documented options are the **4.x** shape; `latest` is 5.1.0-rc-4 with `uiOptions.appInfo` / `uiOptions.theme` and a two-field `selectorOptions`. Installs now pin `@4`, `@proton/link` must match web-sdk's major (not `3.2.3-x`), `chainId` is fetched from `get_info` when omitted, `backButton` does not exist (`requestStatus` does), `removeSession` takes `(identifier, auth, chainId)`, and "Unknown Requestor" means `requestAccount` is unset.
+
+### Fixed — RPC / Hyperion / Light API / streaming (`rpc-queries.md`, `real-time-events.md`, `resources.md`, `node-operation.md`, `hyperion-setup.md`, `hyperion-operations-caveats.md`)
+
+- All-numeric account names: appending `"."` to `lower_bound`/`upper_bound` is rejected (`chain_type_exception`) on current nodeos — use the u64 encoding or `key_type: "name"`. `get_table_by_scope` bounds have the same integer-first bug. Helper unified as `safeName()`.
+- `/v2/history/get_transfers` does not exist in Hyperion at all (not merely undeployed).
+- `get_transaction` response shape (`trx_id, lib, cached_lib, executed, actions[]…`), `get_account` state shape (nested `account`), and `get_tokens` `amount: number` corrected.
+- Light API: `tokenbalance` and `usercount` return text/plain numbers; `key` lookup is `/api/key/{key}` keyed by network; `topholders` returns `[account, amount]` pairs with `limit` 10–1000; `decimals` is a string.
+- Streaming: stream objects emit `message`, not `data` (the doc's handlers never fired); unscoped requests are acked `status: FAIL, reason: invalid request`; Hyperion 3.x servers deliver the handshake as a `message`, 4.x as a `handshake` event; bloxprod advertises `traces:false`. `block-stream` is not on npm (clone the repo).
+- `control_port` is read from `connections.json`, not the chain config. Snapshot mirror cited as `https`. Stream client 4.0.0-rc.3 is published under the `latest` tag.
+- Dropped two closed neftyblocks P2P peers; nodeos version guidance now says Leap 5.0.3 (final Leap) or Spring 1.2.x, matching mainnet's v5.0.0–v5.0.3. Anchor URL is `anchorwallet.io`.
+
+### Fixed — DeFi / DEX (`metalx-dex.md`, `defi-trading.md`, `alcor-dex.md`, `simpledex.md`, `loan-protocol.md`, `staking-governance.md`)
+
+- MetalX DEX `order_type` is 1 limit / 2 stop-loss / 3 take-profit (per docs.metalx.com); `show_error_msg` is `bool?`; leaderboard takes repeated `market_ids=` (bracketed form is a 400).
+- Alcor: mainnet market-creation fee is 2,000 XPR (×2 if base ≠ XPR; 50,000 XPR is testnet), paid by transfer with a `new_market|…` memo; the API's `base_currency`/`target_currency` are swapped relative to the on-chain table; `account` table is an order index, not balances; no `/account/{name}/orders` endpoint; route endpoint is `/swapRouter/getRoute`; SDK has no `computePoolAddress`.
+- SimpleDEX: `dex.protonnz.com` already 308-redirects; 6-decimal quote tokens (XMD, XUSDC) scale ×1,000,000; `sell` field is `minXpr`; moderation authority is `simplesetup@active` or the 2-of-4 owner msig.
+- LOAN: liquidation memo is `liquidate,<borrower>,<LTOKEN>`; one global 10% `liquidation_incentive` (no per-collateral table); `borrows` rows have no `health_factor` (compute it); the whitelist gates contract callers by code hash, not users; supply refreshed (~114.2B).
+- Staking: staker rewards are claimed with `eosio::voterclaim` (`voterclaimst` to restake) — `claimrewards` is the BP pay claim; vote for exactly 4 BPs (fewer is accepted but disqualifies rewards); RAM ≈0.0004 XPR/byte with a live-lookup pointer.
+
+### Fixed — identity / payments / agents (`webauth-identity.md`, `payment-patterns.md`, `xpr-agents.md`, `agent-bootstrap.md`, `README.md`)
+
+- `usersinfo.aacts` / `ac` are arrays of `{field_0, field_1}` tuples; KYC claim table gains `metal.kyc:nationalidnumber` and legacy `trulioo:*` sets (7–8 claims, order varies); contract snippet imports fixed.
+- XPR/USD is oracle feed **3** (payment example used a non-existent feed 1).
+- xpragents: an unset name reads as `""` (not 13 dots); the indexer's CORS is allow-listed to xpragents.com/localhost; funding an open job before `selectbid` is now rejected by the contract (wedge behaviour was pre-Sept-2026).
+- `@xpr-agents/openclaw` ships **75** MCP tools (four places); `proton key:lock` takes no argument; the openclaw package exports CLI helpers, not registry classes; bootstrap script re-runs `npm install`, not `npm update`; Pinata docs link points at the HTML page; version pins refreshed to `@proton/cli` 0.1.99 and `@xpr-agents/sdk` 0.2.7.
+
+### Verified unchanged (for the record)
+
+All 18 MetalX markets, the 19-live / 5-dormant oracle split, every LOAN collateral factor and feed index, SimpleDEX fees/thresholds, the four xpragents contract ABIs and every arity in `xpr-agents.md`, all resources.md token precisions and issuers, all Hyperion ops config keys and CLI subcommands against upstream 4.1.0, all 24 Leap `config.ini` keys, and the empty-memo DEX deposit behaviour (no refund action exists in the `dex` ABI).
+
+---
+
 ## [2.5.1] — 2026-09-03
 
 Prompt audit of the skill's model-facing text (SKILL.md, the agent bootstrap chat prompt, module rule lines) against current Claude models. No rule was dropped; every change removes duplication, shouting register, or archaeology while keeping each constraint and its reason.

@@ -138,7 +138,7 @@ Block Producers (BPs) are the backbone of XPR Network:
 ### Voting Requirements
 
 - **Must have XPR staked** before voting
-- **Must vote for at least 4 Block Producers**
+- **Vote for 4 Block Producers** (`max_bp_per_vote` = 4). Fewer is accepted by the chain but sets `isqualified = false`, so you earn no staking rewards
 - Voting choice does **NOT** affect staking reward amount
 
 ### What to Consider
@@ -172,10 +172,10 @@ proton action eosio voteproducer '{"voter":"myaccount","proxy":"","producers":["
 ```typescript
 async function voteForProducers(
   session: any,
-  producers: string[]  // Must be at least 4
+  producers: string[]  // exactly 4 to qualify for rewards (max 4)
 ): Promise<any> {
-  if (producers.length < 4) {
-    throw new Error('Must vote for at least 4 Block Producers');
+  if (producers.length !== 4) {
+    throw new Error('Vote for exactly 4 Block Producers to qualify for staking rewards');
   }
 
   // Producers must be sorted alphabetically
@@ -238,7 +238,11 @@ const activeProducers = producers.slice(0, 21);
 #### Via CLI
 
 ```bash
-proton action eosio claimrewards '{"owner":"myaccount"}' myaccount
+# voterclaim = staker/voter rewards. (eosio::claimrewards is the BLOCK PRODUCER pay claim.)
+proton action eosio voterclaim '{"owner":"myaccount"}' myaccount
+
+# Claim and re-stake in one step
+proton action eosio voterclaimst '{"owner":"myaccount"}' myaccount
 ```
 
 #### Via Code
@@ -248,7 +252,7 @@ async function claimStakingRewards(session: any): Promise<any> {
   return session.transact({
     actions: [{
       account: 'eosio',
-      name: 'claimrewards',
+      name: 'voterclaim',   // staker rewards; 'claimrewards' is the BP pay claim
       authorization: [session.auth],
       data: {
         owner: session.auth.actor
@@ -361,7 +365,7 @@ RAM is used to store data on-chain (table rows, NFTs, tokens, etc.). Unlike CPU/
 
 | Item | Cost |
 |------|------|
-| RAM Storage | **Dynamic (Bancor algorithm), ~0.000252 XPR per byte** |
+| RAM Storage | **Dynamic (Bancor algorithm), ~0.0004 XPR per byte (≈0.41 XPR/KB, Sept 2026 — read `eosio::rammarket` for the live price)** |
 | Free RAM (WebAuth) | **12,000 unsellable bytes** per account |
 | Maximum Purchase | **6 MB** |
 
@@ -495,10 +499,10 @@ proton action eosio unstakexpr '{"from":"ACCOUNT","receiver":"ACCOUNT","unstake_
 # Claim refund (after 24h)
 proton action eosio refundxpr '{"owner":"ACCOUNT"}' ACCOUNT
 
-# Claim rewards
-proton action eosio claimrewards '{"owner":"ACCOUNT"}' ACCOUNT
+# Claim staking rewards (voterclaimst to auto-restake)
+proton action eosio voterclaim '{"owner":"ACCOUNT"}' ACCOUNT
 
-# Vote for BPs (minimum 4)
+# Vote for BPs (exactly 4 to qualify for rewards)
 proton action eosio voteproducer '{"voter":"ACCOUNT","proxy":"","producers":["bp1","bp2","bp3","bp4"]}' ACCOUNT
 ```
 
