@@ -355,8 +355,8 @@ npx tsc --noEmit
 # List stored keys
 proton key:list
 
-# Add the key
-proton key:add PVT_K1_xxxxx
+# Add the key interactively, outside the agent context
+proton key:add
 ```
 
 ### "Permission denied"

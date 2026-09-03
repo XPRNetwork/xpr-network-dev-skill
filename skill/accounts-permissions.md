@@ -523,8 +523,8 @@ proton action eosio updateauth '{
   "auth": {"threshold":1,"keys":[{"key":"PUB_K1_newkey","weight":1}],"accounts":[],"waits":[]}
 }' myaccount@owner
 
-# Remove old key from storage
-proton key:remove PVT_K1_oldkey
+# Review local keychain entries and remove the old key interactively if needed
+proton key:list
 ```
 
 ---
