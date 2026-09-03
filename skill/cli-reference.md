@@ -63,17 +63,8 @@ proton key:generate
 # Add existing private key (interactive)
 proton key:add
 
-# Add key directly (will prompt for encryption)
-proton key:add PVT_K1_xxxxx
-
-# Add key without encryption prompt
-echo "no" | proton key:add PVT_K1_xxxxx
-
 # List all stored keys
 proton key:list
-
-# Get private key for a public key
-proton key:get PUB_K1_xxxxx
 
 # Lock keys with password
 proton key:lock
@@ -81,12 +72,11 @@ proton key:lock
 # Unlock keys
 proton key:unlock [PASSWORD]
 
-# Remove a specific key
-proton key:remove PVT_K1_xxxxx
-
 # Reset password and delete ALL keys
 proton key:reset
 ```
+
+Agent safety note: private-key export and direct `PVT_K1_...` command examples are intentionally omitted here. For AI agent workflows, import keys only through the interactive CLI keychain path outside the agent context, then sign with `proton action ... AUTHORIZATION`.
 
 ### Key Storage Location
 
