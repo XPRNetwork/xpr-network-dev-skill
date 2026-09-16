@@ -124,6 +124,7 @@ permissions:
 ### Update Permission (Add Key)
 
 ```bash
+# WARNING: updateauth REPLACES the entire authority — re-list every key, account and wait you want to keep (check `proton account NAME` first).
 proton action eosio updateauth '{
   "account": "myaccount",
   "permission": "active",
@@ -144,6 +145,7 @@ proton action eosio updateauth '{
 For a contract to send inline actions, it needs `eosio.code` permission:
 
 ```bash
+# WARNING: updateauth REPLACES the entire authority — re-list every key, account and wait you want to keep (check `proton account NAME` first).
 proton action eosio updateauth '{
   "account": "mycontract",
   "permission": "active",
@@ -165,6 +167,7 @@ proton action eosio updateauth '{
 
 ```bash
 # Create 'minter' permission under 'active'
+# WARNING: updateauth REPLACES the entire authority — re-list every key, account and wait you want to keep (check `proton account NAME` first).
 proton action eosio updateauth '{
   "account": "myaccount",
   "permission": "minter",
@@ -220,6 +223,7 @@ Multisig requires multiple parties to approve a transaction.
 2-of-3 multisig:
 
 ```bash
+# WARNING: updateauth REPLACES the entire authority — re-list every key, account and wait you want to keep (check `proton account NAME` first).
 proton action eosio updateauth '{
   "account": "multisig",
   "permission": "active",
@@ -340,6 +344,7 @@ const execActions = [{
 Add a time delay before permission can be used:
 
 ```bash
+# WARNING: updateauth REPLACES the entire authority — re-list every key, account and wait you want to keep (check `proton account NAME` first).
 proton action eosio updateauth '{
   "account": "myaccount",
   "permission": "delayed",
@@ -400,7 +405,8 @@ Public:  PUB_R1_xxxxx
 ### Contract Admin Pattern
 
 ```typescript
-// In contract
+import { Contract, Table, Singleton, Name, check, requireAuth } from 'proton-tsc';
+
 @table("config", singleton)
 class Config extends Table {
   constructor(
@@ -409,27 +415,34 @@ class Config extends Table {
   ) { super(); }
 }
 
-function isAdmin(account: Name): boolean {
-  const config = this.configSingleton.get();
-  if (account == config.owner) return true;
-  return config.admins.includes(account);
-}
+@contract
+class MyApp extends Contract {
+  configSingleton: Singleton<Config> = new Singleton<Config>(this.receiver);
 
-@action("adminaction")
-adminAction(admin: Name): void {
-  requireAuth(admin);
-  check(this.isAdmin(admin), "Not an admin");
-  // ... admin logic
-}
+  // Must be a METHOD — a free function has no `this`, so a top-level
+  // `function isAdmin()` reaching for `this.configSingleton` will not compile.
+  private isAdmin(account: Name): boolean {
+    const config = this.configSingleton.get();
+    if (account == config.owner) return true;
+    return config.admins.includes(account);
+  }
 
-@action("addadmin")
-addAdmin(newAdmin: Name): void {
-  const config = this.configSingleton.get();
-  requireAuth(config.owner);  // Only owner can add admins
+  @action("adminaction")
+  adminAction(admin: Name): void {
+    requireAuth(admin);
+    check(this.isAdmin(admin), "Not an admin");
+    // ... admin logic
+  }
 
-  if (!config.admins.includes(newAdmin)) {
-    config.admins.push(newAdmin);
-    this.configSingleton.set(config, this.receiver);
+  @action("addadmin")
+  addAdmin(newAdmin: Name): void {
+    const config = this.configSingleton.get();
+    requireAuth(config.owner);  // Only owner can add admins
+
+    if (!config.admins.includes(newAdmin)) {
+      config.admins.push(newAdmin);
+      this.configSingleton.set(config, this.receiver);
+    }
   }
 }
 ```
@@ -452,6 +465,7 @@ Account: myapp
 
 ```bash
 # Owner can always recover by updating active
+# WARNING: updateauth REPLACES the entire authority — re-list every key, account and wait you want to keep (check `proton account NAME` first).
 proton action eosio updateauth '{
   "account": "myaccount",
   "permission": "active",
@@ -491,6 +505,7 @@ Instead of giving a key full `active` permission, link it to specific actions:
 
 ```bash
 # Create limited permission
+# WARNING: updateauth REPLACES the entire authority — re-list every key, account and wait you want to keep (check `proton account NAME` first).
 proton action eosio updateauth '{
   "account": "mybot",
   "permission": "resolver",
@@ -516,6 +531,7 @@ If the bot key is compromised, attacker can only call `resolve`, not transfer fu
 proton key:generate
 
 # Update active permission
+# WARNING: updateauth REPLACES the entire authority — re-list every key, account and wait you want to keep (check `proton account NAME` first).
 proton action eosio updateauth '{
   "account": "myaccount",
   "permission": "active",

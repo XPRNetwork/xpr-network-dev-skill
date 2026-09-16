@@ -20,8 +20,8 @@ WARNINGS=0
 
 # Helper functions
 pass() { echo -e "${GREEN}✓${NC} $1"; }
-fail() { echo -e "${RED}✗${NC} $1"; ((ERRORS++)); }
-warn() { echo -e "${YELLOW}⚠${NC} $1"; ((WARNINGS++)); }
+fail() { echo -e "${RED}✗${NC} $1"; ERRORS=$((ERRORS+1)); }
+warn() { echo -e "${YELLOW}⚠${NC} $1"; WARNINGS=$((WARNINGS+1)); }
 
 # 1. Check YAML frontmatter
 echo "1. Checking SKILL.md frontmatter..."
@@ -71,7 +71,7 @@ URLS=(
     "https://dex.api.mainnet.metalx.com/dex/v1/markets/all"
 )
 for url in "${URLS[@]}"; do
-    HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "$url" 2>/dev/null || echo "000")
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$url" 2>/dev/null) || HTTP_CODE="000"
     if [ "$HTTP_CODE" = "200" ]; then
         pass "$url"
     else

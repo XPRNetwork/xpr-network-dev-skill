@@ -14,7 +14,7 @@ What that does on XPR: DEX actions carry arbitrary keys in `act.data` (`"136|XMD
 
 **Detection:** compare partitions: `GET proton-action-v1-0000NN/_mapping` — healthy ≈ 100-120 fields, poisoned ≈ 997+; healthy = 4 shards, poisoned = 1. Log will be full of `Limit of total fields [1000] exceeded`.
 
-**Fix:** `DELETE _index_template/<yours>`; delete the malformed partition index; purge the poisoned action queues (safe ONLY because the range gets re-read from SHIP); re-run the range. With the legacy template back in charge we measured ~4,900 blocks/sec through the same "impossibly dense" era that crawled at ~2/sec.
+**Fix:** `DELETE _index_template/<yours>`; delete the malformed partition index — first `GET /proton-action-v1-0000NN/_count` and **confirm with the operator before deleting**, never unattended; purge the poisoned action queues (safe ONLY because the range gets re-read from SHIP); re-run the range. With the legacy template back in charge we measured ~4,900 blocks/sec through the same "impossibly dense" era that crawled at ~2/sec.
 
 **And the kicker: `best_compression` is already Hyperion's default** (`src/indexer/definitions/index-templates.ts`) — check `GET <index>/_settings` before "adding" it. To change replicas/codec on FUTURE indices, edit Hyperion's own legacy templates (`PUT _template/proton-action` with its full body modified), never a composable overlay.
 
@@ -50,8 +50,9 @@ Do **NOT** measure the ES disk-fill rate during the **December 2023 Metal X DEX 
 
 **This was a major contributor to our "disk full at block 230M" incident** — ES was only ~1TB there; 425GB of Redis garbage pushed the drive to 92%.
 
-**Fix (safe — Redis doesn't use temp files):**
+**Fix (safe only for STALE temp files — a live BGSAVE is writing one right now):**
 ```bash
+redis-cli INFO persistence | grep rdb_bgsave_in_progress   # MUST be 0 before you delete anything
 ls -lah /var/lib/redis/temp-*.rdb          # confirm they're stale (old dates)
 rm -f /var/lib/redis/temp-*.rdb            # reclaim
 redis-cli ping                             # confirm still healthy
@@ -90,7 +91,12 @@ curl -s -u elastic:$P 'localhost:9200/_cat/indices/proton-action-*?v&s=index' | 
 ```
 We wasted hours chasing a "deserializer stall" that was purely disk. Experienced operators warn about this directly: once the ES data drive hits ~90% it flips read-only and causes a lot of pain.
 
-**Recovery:** free space (see §2), delete the empty RED partition indices (`DELETE /proton-*-v1-0000NN` — safe if 0 docs) to get the cluster green, then resume.
+**Recovery:** free space (see §2), delete the empty RED partition indices to get the cluster green, then resume. Check emptiness first — `GET /proton-action-v1-0000NN/_count` must return `0` — and **confirm with the operator before deleting**; an agent never runs this unattended:
+
+```
+GET /proton-action-v1-0000NN/_count     # must be 0
+DELETE /proton-action-v1-0000NN         # only after operator confirmation
+```
 
 ---
 
@@ -115,7 +121,7 @@ We purged all `proton:*` queues and restarted repeatedly during the 230M disk in
 ## 5. Compression, replicas and forcemerge (space reclaim)
 
 - **`index.codec: best_compression` is Hyperion's default** (§0). It is ~30% smaller than the default codec and operators running full XPR history on enterprise NVMe report no measurable query-latency cost. Verify with `GET proton-action-v1-0000NN/_settings` rather than adding it.
-- **Do not add a composable `_index_template` to set codec or replicas.** It replaces Hyperion's legacy template wholesale (§0) and, as a second-order effect, new partitions come up with ES's default of **1 replica** instead of Hyperion's `es_replicas: 0` — **yellow** on a single node with an unassigned replica. If you already did this: `DELETE _index_template/<yours>`, then fix existing indices with `PUT /proton-*/_settings {"index":{"number_of_replicas":0}}`.
+- **Do not add a composable `_index_template` to set codec or replicas.** It replaces Hyperion's legacy template wholesale (§0) and, as a second-order effect, new partitions come up with ES's default of **1 replica** instead of Hyperion's `es_replicas: 0` — **yellow** on a single node with an unassigned replica. If you already did this: `DELETE _index_template/<yours>` (the template only — confirm with the operator before deleting anything under `/proton-*`), then fix existing indices with `PUT /proton-*/_settings {"index":{"number_of_replicas":0}}`.
 - To change settings for future partitions, modify Hyperion's own legacy template body (`GET _template/proton-action`, edit, `PUT _template/proton-action`) so mappings and shard counts survive.
 - **`forcemerge`** reclaims disk from documents marked for deletion, but it takes time and is I/O-heavy — run it when **not** actively indexing. Existing indices keep their codec until reindexed/force-merged.
 

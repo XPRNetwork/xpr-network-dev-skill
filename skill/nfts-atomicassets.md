@@ -427,6 +427,9 @@ To have your contract notified when assets are transferred:
 2. Handle the notification in your contract:
 
 ```typescript
+import { Contract, Name } from 'proton-tsc';
+import { ATOMICASSETS_CONTRACT } from 'proton-tsc/atomicassets';
+
 @action("transfer", notify)
 onNFTTransfer(
   from: Name,
@@ -434,8 +437,12 @@ onNFTTransfer(
   asset_ids: u64[],
   memo: string
 ): void {
+  // WHY: `notify` fires for any contract that names you. A fake contract with the
+  // same `transfer` signature can hand you arbitrary asset_ids you never received.
+  if (this.firstReceiver != ATOMICASSETS_CONTRACT) return;
+
   // Only process transfers TO this contract
-  if (to != this.receiver) return;
+  if (to != this.receiver || from == this.receiver) return;
 
   // Process each asset
   for (let i = 0; i < asset_ids.length; i++) {
@@ -445,6 +452,10 @@ onNFTTransfer(
   }
 }
 ```
+
+If you credit anything off these ids, also read the asset back from the
+`atomicassets::assets` table scoped to `this.receiver` and check its
+`collection_name` — otherwise any collection's junk NFT earns the credit.
 
 ### Querying Assets On-Chain
 

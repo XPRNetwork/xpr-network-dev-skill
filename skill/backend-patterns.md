@@ -24,12 +24,12 @@ For server-side integration where you have a persistent filesystem:
 
 | Aspect | Frontend (web-sdk) | Backend (this guide) |
 |--------|-------------------|---------|
-| Key storage | User's wallet | proton CLI's encrypted keychain |
+| Key storage | User's wallet | proton CLI keychain (`proton-cli.json`, locked with `proton key:lock`) |
 | Signing | Wallet prompts user | proton CLI shells out from process |
 | Use case | User-initiated actions | Automated/scheduled tasks |
 | Security | Wallet handles keys | **Key NEVER enters process memory** |
 
-> **Security update (v0.3.0+):** The traditional pattern of loading `XPR_PRIVATE_KEY` from `.env` into `JsSignatureProvider` is **no longer recommended** for long-running backends or AI agents. Keys in process memory are reachable from every tool call, every log line, every web fetch, every paste into an AI conversation — a single accidental leak compromises the whole account. The recommended pattern routes signing through the proton CLI's encrypted keychain so the key never enters the process. See the "Security: Key Isolation" section below for the rationale and migration path. (For serverless / CI / browser cases where this doesn't apply, route via the table at the top.)
+> **Security update (v0.3.0+):** The traditional pattern of loading `XPR_PRIVATE_KEY` from `.env` into `JsSignatureProvider` is **no longer recommended** for long-running backends or AI agents. Keys in process memory are reachable from every tool call, every log line, every web fetch, every paste into an AI conversation — a single accidental leak compromises the whole account. The recommended pattern routes signing through the proton CLI's keychain so the key never enters the process. See the "Security: Key Isolation" section below for the rationale and migration path. (For serverless / CI / browser cases where this doesn't apply, route via the table at the top.)
 
 ---
 
@@ -44,14 +44,17 @@ npm i -g @proton/cli
 # Pick the network
 proton chain:set proton              # or proton-test
 
-# Add your blockchain key to the encrypted keychain
-proton key:add                       # interactive — paste key once, stored encrypted
+# Add your blockchain key to the CLI keychain
+proton key:add                       # interactive — paste key once
+
+# Required on any long-lived host: encrypt the keystore at rest
+proton key:lock <password>           # without this, the key sits plaintext in proton-cli.json
 
 # Verify
 proton key:list                      # public keys + accounts only; private values print only with --reveal-private
 ```
 
-After this, the key lives in the CLI's encrypted keychain. Your `.env` does NOT need `XPR_PRIVATE_KEY`.
+After this, the key lives in the CLI's keychain — `proton-cli.json` in the CLI config dir, **plaintext on disk until `proton key:lock <password>` runs**, so treat the lock as part of setup. Your `.env` does NOT need `XPR_PRIVATE_KEY`.
 
 ### Dependencies
 
@@ -80,7 +83,7 @@ const { rpc, session } = createCliSession({
 
 What this gives you:
 
-- **`session`** — a `ProtonSession`-shaped object. Same `transact()` interface as the legacy `Api`, but every signed transaction is signed by the CLI from the encrypted keychain. The key bytes never enter your Node.js process.
+- **`session`** — a `ProtonSession`-shaped object. Same `transact()` interface as the legacy `Api`, but every signed transaction is signed by the CLI from its keychain. The key bytes never enter your Node.js process.
 - **`rpc`** — a standard `JsonRpc` for read operations (`get_table_rows`, `get_info`, etc.). Reads still go via HTTP; only signing routes through the CLI.
 
 ### Legacy setup (`JsSignatureProvider`)
@@ -322,11 +325,12 @@ await xpr.callContract('mycontract', 'myaction', { param1: 'value' });
 
 ```typescript
 async function deployToken(
+  session: ProtonSession,
   issuer: string,
   maxSupply: string  // e.g., "1000000.0000 MYTOKEN"
 ) {
   // Create token
-  await sendTransaction([{
+  await sendTransaction(session, [{
     account: 'eosio.token',
     name: 'create',
     authorization: [{ actor: issuer, permission: 'active' }],
@@ -342,12 +346,13 @@ async function deployToken(
 
 ```typescript
 async function issueTokens(
+  session: ProtonSession,
   issuer: string,
   to: string,
   quantity: string,
   memo: string = 'Token issuance'
 ) {
-  await sendTransaction([{
+  await sendTransaction(session, [{
     account: 'eosio.token',
     name: 'issue',
     authorization: [{ actor: issuer, permission: 'active' }],
@@ -382,13 +387,14 @@ async function getTokenBalance(account: string, tokenContract: string = 'eosio.t
 
 ```typescript
 async function mintNFT(
+  session: ProtonSession,
   minter: string,
   collection: string,
   schema: string,
   templateId: number,
   recipient: string
 ) {
-  return sendTransaction([{
+  return sendTransaction(session, [{
     account: 'atomicassets',
     name: 'mintasset',
     authorization: [{ actor: minter, permission: 'active' }],
@@ -410,6 +416,7 @@ async function mintNFT(
 
 ```typescript
 async function batchMintWithLimit(
+  session: ProtonSession,
   minter: string,
   collection: string,
   schema: string,
@@ -438,7 +445,7 @@ async function batchMintWithLimit(
       }
     }));
 
-    const result = await sendTransaction(actions);
+    const result = await sendTransaction(session, actions);
     results.push(result);
 
     // Rate limit: wait between batches
@@ -460,7 +467,7 @@ async function batchMintWithLimit(
 ```typescript
 import cron from 'node-cron';
 
-async function resolveExpiredChallenges() {
+async function resolveExpiredChallenges(session: ProtonSession) {
   // Get active challenges that have ended
   const { rows } = await rpc.get_table_rows({
     code: 'pricebattle',
@@ -481,7 +488,7 @@ async function resolveExpiredChallenges() {
     if (now >= endTime) {
       // Resolve the challenge — the contract reads the oracle price itself;
       // resolve(challenge_id: uint64, resolver: name) takes no price argument.
-      await sendTransaction([{
+      await sendTransaction(session, [{
         account: 'pricebattle',
         name: 'resolve',
         authorization: [{ actor: 'resolver', permission: 'active' }],
@@ -497,14 +504,14 @@ async function resolveExpiredChallenges() {
 }
 
 // Run every minute
-cron.schedule('* * * * *', resolveExpiredChallenges);
+cron.schedule('* * * * *', () => resolveExpiredChallenges(session));
 ```
 
 ### Cleanup Expired Entries
 
 ```typescript
-async function cleanupExpired() {
-  await sendTransaction([{
+async function cleanupExpired(session: ProtonSession) {
+  await sendTransaction(session, [{
     account: 'mycontract',
     name: 'cleanup',
     authorization: [{ actor: 'myaccount', permission: 'active' }],
@@ -513,7 +520,7 @@ async function cleanupExpired() {
 }
 
 // Run every hour
-cron.schedule('0 * * * *', cleanupExpired);
+cron.schedule('0 * * * *', () => cleanupExpired(session));
 ```
 
 ---
@@ -537,7 +544,7 @@ That model required perfect prompt-injection resistance, perfect log-redaction d
 
 ### Key Management — the new pattern
 
-**Make the unsafe thing impossible: the agent process must not have the chain key in memory.** All signing routes through the proton CLI's encrypted keychain.
+**Make the unsafe thing impossible: the agent process must not have the chain key in memory.** All signing routes through the proton CLI's keychain.
 
 ```typescript
 // ❌ NEVER do this (legacy pattern that caused the charliebot leak)
@@ -561,7 +568,8 @@ Operator setup happens once, outside the agent:
 ```bash
 npm i -g @proton/cli
 proton chain:set proton
-proton key:add                # paste key once, stored encrypted in CLI keychain
+proton key:add                # paste key once, stored in the CLI keychain
+proton key:lock <password>    # required — proton-cli.json is plaintext until you do this
 ```
 
 ### What this doesn't fix (honest list)
@@ -829,7 +837,7 @@ app.get('/health', async (req, res) => {
 ```bash
 # XPR Network Configuration
 # Note: NO XPR_PRIVATE_KEY here. The proton CLI handles signing from its
-# encrypted keychain. If you set XPR_PRIVATE_KEY anyway, the create-xpr-agent
+# keychain. If you set XPR_PRIVATE_KEY anyway, the create-xpr-agent
 # starter's start.sh refuses to start.
 XPR_ACCOUNT=myaccount
 XPR_RPC_ENDPOINT=https://proton.eosusa.io
@@ -848,6 +856,8 @@ ATOMIC_API=https://xpr.api.atomicassets.io
 # Optional: Rate limiting
 MAX_TPS=10
 ```
+
+Add `.env` to `.gitignore` **before** writing any key into it — a committed key is a leaked key. `A2A_SIGNING_KEY` must be a key registered on a custom permission with no token-transfer or funds authority, so a leak costs reputation only.
 
 ### Config Loader
 
@@ -881,11 +891,15 @@ function loadConfig(): Config {
     );
   }
 
-  // Verify the CLI has a key for this account before booting.
+  // Verify the CLI actually holds a key for this account before booting.
+  let keyList: string;
   try {
-    execSync(`proton key:list`, { stdio: 'pipe' });
+    keyList = execSync('proton key:list', { stdio: 'pipe' }).toString();
   } catch {
     throw new Error('proton CLI not found in PATH. Install with: npm i -g @proton/cli');
+  }
+  if (!keyList.includes(process.env.XPR_ACCOUNT!)) {
+    throw new Error(`No key in the proton CLI keychain for ${process.env.XPR_ACCOUNT}. Run: proton key:add`);
   }
 
   return {

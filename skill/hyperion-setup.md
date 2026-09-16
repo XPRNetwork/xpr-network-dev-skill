@@ -84,8 +84,9 @@ Heap via `/etc/elasticsearch/jvm.options.d/heap.options`: `-Xms31g -Xmx31g`.
 ```bash
 rabbitmq-plugins enable rabbitmq_management
 rabbitmqctl add_vhost hyperion
-rabbitmqctl add_user hyperion <PASSWORD>
-rabbitmqctl set_user_tags hyperion administrator
+read -rs -p "hyperion rabbitmq password: " RMQ_PASS   # keeps it out of argv/ps and shell history
+rabbitmqctl add_user hyperion "$RMQ_PASS"; unset RMQ_PASS
+rabbitmqctl set_user_tags hyperion management          # not administrator — Hyperion needs no cluster admin
 rabbitmqctl set_permissions -p hyperion hyperion ".*" ".*" ".*"
 ```
 
@@ -172,8 +173,20 @@ Enable streaming if you want the websocket API: `"features": { "streaming": { "e
 
 ```nginx
 limit_req_zone $binary_remote_addr zone=hyperion:20m rate=50r/s;
-server {
+
+server {                                   # plain HTTP redirects to TLS
+    listen 80;
     server_name hyperion-xpr-mainnet.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name hyperion-xpr-mainnet.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/hyperion-xpr-mainnet.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/hyperion-xpr-mainnet.example.com/privkey.pem;
+
     location / {
         limit_req zone=hyperion burst=100 nodelay;
         proxy_pass http://127.0.0.1:7000;

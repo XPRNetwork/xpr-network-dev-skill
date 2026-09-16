@@ -12,10 +12,11 @@ yarn global add @proton/cli
 
 **Requires Node.js 16+**
 
-If you get permission errors on Mac/Linux:
+If you get permission errors on Mac/Linux, install Node under your own user instead of `sudo chown`-ing system directories — use [nvm](https://github.com/nvm-sh/nvm), or point npm at a user-owned prefix:
 ```bash
-sudo chown -R $USER /usr/local/lib/node_modules
-sudo chown -R $USER /usr/local/bin
+npm config set prefix ~/.npm-global
+export PATH="$HOME/.npm-global/bin:$PATH"   # add to ~/.zshrc or ~/.bashrc
+npm i -g @proton/cli
 ```
 
 ---
@@ -64,15 +65,20 @@ proton key:generate
 proton key:add
 
 # Add key directly (will prompt for encryption)
+# Passing the key as an argument writes it to shell history and exposes it in `ps`
+# while the command runs — prefer interactive `proton key:add` wherever there's a TTY.
 proton key:add PVT_K1_xxxxx
 
-# Add key without encryption prompt
+# Add key without encryption prompt (same argv exposure as above)
+# Answering "no" leaves the key plaintext in proton-cli.json until you run `proton key:lock`.
 echo "no" | proton key:add PVT_K1_xxxxx
 
 # List all stored keys
 proton key:list
 
 # Get private key for a public key
+# Prints the raw private key to stdout — never run this in an agent session, CI job,
+# or anything else that captures or logs command output.
 proton key:get PUB_K1_xxxxx
 
 # Lock keys with password
@@ -299,7 +305,7 @@ proton transaction:get TRANSACTION_ID
 # and fails on a JSON string — use transaction:push for raw transactions.
 
 # Push to specific endpoint
-proton transaction:push SIGNED_TX_JSON -u https://proton.eosusa.io
+proton transaction:push TX_JSON -u https://proton.eosusa.io
 ```
 
 ---

@@ -53,7 +53,7 @@ You should see `createCliSession`, `createCliApi` and the `exec*`/`check*` proto
 
 ### Step 2 — Provision the proton CLI keychain
 
-The agent process **must never hold the XPR private key directly at signing time**. All signing routes through the `proton` CLI's encrypted keychain. There are two ways to load the key into the keychain — pick the one that fits your environment:
+The agent process **must never hold the XPR private key directly at signing time**. All signing routes through the `proton` CLI's keychain (`proton-cli.json` in the CLI config dir — plaintext on disk until `proton key:lock <password>` runs, which is a required step on any long-lived host). There are two ways to load the key into the keychain — pick the one that fits your environment:
 
 #### 2a — Interactive (human at a terminal)
 
@@ -64,7 +64,7 @@ proton key:add                       # paste the key when prompted
 proton key:list                      # verify the account is registered
 ```
 
-`proton key:add` prompts twice: once for the key itself, once with *"Would you like to encrypt your stored keys with a password?"* Answer the second prompt how you like — a password gives you encryption-at-rest in exchange for needing `proton key:unlock` before signing.
+`proton key:add` prompts twice: once for the key itself, once with *"Would you like to encrypt your stored keys with a password?"* Answer **yes** on any long-lived host — without a password the key sits plaintext in `proton-cli.json`; the cost is needing `proton key:unlock` before signing.
 
 #### 2b — Non-interactive (managed consoles, containers, scripts)
 
@@ -80,8 +80,8 @@ proton key:list
 Notes:
 
 - **There is no `--no-encrypt` / `--encrypt` flag.** Verified against `@proton/cli@0.1.99`. The `echo "no" | …` pipe is the supported way to auto-answer the prompt.
-- **The key lands in the CLI's keychain as plaintext on disk.** Acceptable for a trusted single-tenant container (the agent host's threat model already assumes the host itself isn't compromised). Not acceptable on a shared box. Lock it later with `proton key:lock` (prompts for a 32-character password, or generates one if left blank) if you want encryption-at-rest; `proton key:unlock <password>` flips it back to plaintext.
-- **The key is briefly visible in `ps` while `proton key:add` is running** (because it's a positional argument). On Pinata's per-agent containers `ps` is uid-scoped to the agent itself, so this is the same actor that already holds the key — no escalation. On a shared host, it's an exposure.
+- **The key lands in the CLI's keychain as plaintext on disk.** Acceptable for a trusted single-tenant container (the agent host's threat model already assumes the host itself isn't compromised). Not acceptable on a shared box. Lock it with `proton key:lock` (prompts for a 32-character password, or generates one if left blank) as a required follow-up step on any long-lived host; `proton key:unlock <password>` flips it back to plaintext.
+- **The key is briefly visible in `ps` while `proton key:add` is running, and it lands in the shell's history file** (because it's a positional argument). Unset `HISTFILE` for the provisioning shell, or delete the entry afterwards. On Pinata's per-agent containers `ps` is uid-scoped to the agent itself, so this is the same actor that already holds the key — no escalation. On a shared host, it's an exposure.
 - After loading, signing is also non-interactive — `proton transaction:push '<json>'` and `proton action <contract> <action> '<args>' <account>@active` both return without prompts as long as the keystore is unlocked (or never locked).
 - **Pre-existing locked keystores:** `key:add` skips the encryption prompt entirely when `isLocked === true` is already set, but any signing op still needs `proton key:unlock <password>` first.
 
@@ -184,7 +184,11 @@ Read `skill/` and the xpr-agents README before filling in the registration field
 Steps 1, 3, and 4 are idempotent and scriptable. Step 2 (`proton key:add`) stays manual. Run the script once at agent provisioning:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/XPRNetwork/xpr-network-dev-skill/main/scripts/agent-bootstrap.sh | bash
+git clone https://github.com/XPRNetwork/xpr-network-dev-skill.git
+cd xpr-network-dev-skill
+git checkout v2.7.0                 # pin a tagged release, never a moving branch
+less scripts/agent-bootstrap.sh     # review before running — it provisions a chain key
+./scripts/agent-bootstrap.sh
 ```
 
 Or, if you've already cloned the repo:
@@ -243,7 +247,10 @@ confirm with `proton key:list`, which prints only public values.
 
 Step 1 — Run the bootstrap script:
 
-  curl -fsSL https://raw.githubusercontent.com/XPRNetwork/xpr-network-dev-skill/main/scripts/agent-bootstrap.sh | bash
+  git clone https://github.com/XPRNetwork/xpr-network-dev-skill.git
+  cd xpr-network-dev-skill && git checkout v2.7.0
+  cat scripts/agent-bootstrap.sh   # review it before running; report anything surprising
+  ./scripts/agent-bootstrap.sh
 
 Report the output. The script handles installs, PATH fixup, repo
 clone, and a read-only smoke test. Stop and ask me if it fails.

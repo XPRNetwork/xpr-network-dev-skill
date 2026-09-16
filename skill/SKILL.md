@@ -1,7 +1,7 @@
 ---
 name: xpr-network-dev
 description: XPR Network (formerly Proton) blockchain development - proton-tsc smart contracts, @proton CLI and web SDK, RPC and Hyperion queries, DeFi (MetalX, Alcor, LOAN), NFTs, the XPR Agents job board, node and Hyperion operations. Use for anything mentioning XPR, Proton, or @proton packages.
-version: 2.6.0
+version: 2.7.0
 author: XPR Network Community
 repository: https://github.com/XPRNetwork/xpr-network-dev-skill
 ---
@@ -10,7 +10,7 @@ repository: https://github.com/XPRNetwork/xpr-network-dev-skill
 
 This skill provides comprehensive knowledge for developing on XPR Network, a fast, gas-free blockchain with WebAuthn wallet support.
 
-> **Policy for AI agents (applies skill-wide):** All chain **writes** documented in this skill use the **`proton` CLI keychain** for signing — private keys stay in the CLI's encrypted on-disk keystore, never in the agent's process memory or context. **Reads** use direct RPC (`get_table_rows`, `get_account`, etc.) and the relevant project's REST API. Do **not** introduce signing patterns that pass raw private keys to the agent (e.g. `new JsSignatureProvider(['PRIV_KEY'])`, `wallet.import_key('...')`, `XPR_PRIVATE_KEY` in environment). See [`backend-patterns.md` → Security: Key Isolation](backend-patterns.md#security-key-isolation) and [`../agent-bootstrap.md`](../agent-bootstrap.md) for the canonical signing path.
+> **Policy for AI agents (applies skill-wide):** All chain **writes** documented in this skill use the **`proton` CLI keychain** for signing — private keys stay in the CLI's on-disk keystore (`proton-cli.json` in the CLI config dir), never in the agent's process memory or context. That file is **plaintext until you run `proton key:lock <password>`** — treat locking as a required step on any long-lived host, not an option. **Reads** use direct RPC (`get_table_rows`, `get_account`, etc.) and the relevant project's REST API. Do **not** introduce signing patterns that pass raw private keys to the agent (e.g. `new JsSignatureProvider(['PRIV_KEY'])`, `wallet.import_key('...')`, `XPR_PRIVATE_KEY` in environment). See [`backend-patterns.md` → Security: Key Isolation](backend-patterns.md#security-key-isolation) and [`../agent-bootstrap.md`](../agent-bootstrap.md) for the canonical signing path.
 
 > **AI-generated contract code:** smart contracts are immutable once deployed and hold real assets, so treat any contract code produced with this skill as a draft. Before it reaches mainnet it needs testnet runs, review by a developer who knows XPR Network/EOSIO contracts, and, for anything holding significant value, a professional audit. The full checklist lives in `safety-guidelines.md` → *AI-Generated Code Disclaimer*.
 

@@ -107,6 +107,9 @@ class MyContract extends Contract {
 
   @action("init")
   init(owner: Name): void {
+    // Without this the first caller of an undeployed-but-live contract wins ownership
+    requireAuth(this.receiver);
+
     // Check if already initialized — get() never returns null (it returns a
     // default-constructed Config), so use getOrNull() for existence checks
     check(this.configSingleton.getOrNull() === null, "Already initialized");
@@ -171,6 +174,9 @@ export class Post extends Table {
 
 ## TableStore Operations
 
+The contract account pays RAM for every row it writes, so each state-changing
+action below carries `requireAuth`. Reads need no auth.
+
 ### Initialize TableStore
 
 ```typescript
@@ -187,6 +193,7 @@ class MyContract extends Contract {
 ```typescript
 @action("adduser")
 addUser(account: Name): void {
+  requireAuth(this.receiver);
   const user = new User(
     this.userTable.availablePrimaryKey,  // Auto-increment ID
     account,
@@ -202,6 +209,7 @@ addUser(account: Name): void {
 ```typescript
 @action("setuser")
 setUser(id: u64, account: Name, balance: u64): void {
+  requireAuth(this.receiver);
   const user = new User(id, account, balance, currentTimeSec());
   this.userTable.set(user, this.receiver);  // Insert or update
 }
@@ -226,6 +234,7 @@ getUser(id: u64): void {
 ```typescript
 @action("updatebal")
 updateBalance(id: u64, newBalance: u64): void {
+  requireAuth(this.receiver);  // writes an arbitrary balance — never leave open
   const user = this.userTable.requireGet(id, "User not found");
   user.balance = newBalance;
   this.userTable.update(user, this.receiver);  // Throws if not exists
@@ -237,6 +246,7 @@ updateBalance(id: u64, newBalance: u64): void {
 ```typescript
 @action("deluser")
 deleteUser(id: u64): void {
+  requireAuth(this.receiver);
   const user = this.userTable.requireGet(id, "User not found");
   this.userTable.remove(user);
 }
@@ -301,6 +311,9 @@ onTransfer(from: Name, to: Name, quantity: Asset, memo: string): void {
   // Only accept transfers from eosio.token
   if (this.firstReceiver != Name.fromString("eosio.token")) return;
 
+  // Only accept the symbol you price in — one contract can host many tokens
+  if (quantity.symbol != new Symbol("XPR", 4)) return;
+
   // Parse memo and process payment
   if (memo.startsWith("deposit:")) {
     // Handle deposit
@@ -312,7 +325,7 @@ onTransfer(from: Name, to: Name, quantity: Asset, memo: string): void {
 - `this.receiver` - The contract that contains this code (your contract)
 - `this.firstReceiver` - The contract where the action originated (e.g., `eosio.token` for transfers)
 
-**Security Note**: Always check `this.firstReceiver` in notify handlers to prevent spoofed notifications from malicious contracts pretending to be token contracts.
+**Security Note**: Always check `this.firstReceiver` **and** `quantity.symbol` in notify handlers. `firstReceiver` stops a malicious contract from spoofing a transfer notification; the symbol check stops a worthless token issued under the same symbol string on the real token contract from being credited as the one you price in.
 
 ```typescript
 // SECURE: Check the token contract
@@ -410,10 +423,13 @@ if (hasAuth(this.receiver)) {
 Call other contracts from within your contract:
 
 ```typescript
-import { InlineAction, PermissionLevel, Name, Asset } from 'proton-tsc';
+import { InlineAction, PermissionLevel, ActionData, Name, Asset, requireAuth, check } from 'proton-tsc';
 
 @action("paywinner")
 payWinner(winner: Name, amount: Asset): void {
+  requireAuth(this.receiver);        // spends contract funds — never leave open
+  check(amount.amount > 0, "Amount must be positive");
+
   // Transfer tokens using inline action
   // InlineAction takes the action name; .act(contract, permission) binds the
   // target contract and authorization; .send(data) dispatches it.
@@ -423,17 +439,22 @@ payWinner(winner: Name, amount: Asset): void {
     .send(new TransferArgs(this.receiver, winner, amount, "Prize payout"));
 }
 
-// Define the action arguments class
+// Define the action arguments class. It MUST extend ActionData (the SDK's
+// Packer base) and call super() — `InlineAction<T>` requires `T extends Packer`.
 @packer
-class TransferArgs {
+class TransferArgs extends ActionData {
   constructor(
     public from: Name = new Name(),
     public to: Name = new Name(),
     public quantity: Asset = new Asset(),
     public memo: string = ""
-  ) {}
+  ) { super(); }
 }
 ```
+
+For eosio.token transfers specifically you do not need to hand-roll this: the
+SDK ships `sendTransferToken(tokenContract, from, to, quantity, memo)` in
+`proton-tsc/token`, which is exactly the inline action above.
 
 ### Enable Inline Actions
 
@@ -558,12 +579,16 @@ Throwing aborts the entire transaction. Use `check()` for validation.
 
 ### No Closures
 
-```typescript
-// Wrong - closures not supported
-const items: u64[] = [];
-const filtered = items.filter(x => x > 5);
+Arrow functions exist, but they cannot capture the enclosing scope — that includes
+`this`, so a callback can never touch contract state or tables.
 
-// Correct - use for loops
+```typescript
+// Wrong - captures `threshold` and `this` from the enclosing scope
+const threshold: u64 = 5;
+const filtered = items.filter(x => x > threshold);
+const pay = (to: Name): void => this.transferTo(to);
+
+// Correct - use for loops and private methods
 const filtered: u64[] = [];
 for (let i = 0; i < items.length; i++) {
   if (items[i] > 5) filtered.push(items[i]);
@@ -576,7 +601,7 @@ for (let i = 0; i < items.length; i++) {
 
 ```typescript
 import {
-  Contract, Table, TableStore, Name, Asset, Symbol,
+  Contract, Table, TableStore, Singleton, Name, Asset, Symbol,
   check, requireAuth, currentTimeSec, print
 } from 'proton-tsc';
 

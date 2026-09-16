@@ -402,7 +402,8 @@ import { Server } from 'socket.io';
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer, { cors: { origin: '*' } });
+// Restrict CORS to your own app origin — never '*' on a server that pushes user data
+const io = new Server(httpServer, { cors: { origin: 'https://myapp.com' } });
 
 const notificationService = new NotificationService(io);
 
@@ -410,6 +411,8 @@ io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
   socket.on('subscribe', (account: string) => {
+    // In a real app, bind this to an authenticated session: only let a socket
+    // subscribe to the account its session owns, not any account it names.
     notificationService.subscribeUser(socket.id, account);
     console.log(`${socket.id} subscribed to ${account}`);
   });
@@ -642,13 +645,12 @@ class WebhookDispatcher {
 
     for (const webhook of matching) {
       try {
-        const signature = this.sign(payload, webhook.secret);
+        // Sign the exact bytes you send — signing `payload` alone leaves
+        // `event` and `timestamp` forgeable.
+        const body = JSON.stringify({ event, payload, timestamp: Date.now() });
+        const signature = this.sign(body, webhook.secret);
 
-        await axios.post(webhook.url, {
-          event,
-          payload,
-          timestamp: Date.now()
-        }, {
+        await axios.post(webhook.url, body, {
           headers: {
             'X-Webhook-Signature': signature,
             'Content-Type': 'application/json'
@@ -660,11 +662,11 @@ class WebhookDispatcher {
     }
   }
 
-  private sign(payload: any, secret: string): string {
+  private sign(body: string, secret: string): string {
     const crypto = require('crypto');
     return crypto
       .createHmac('sha256', secret)
-      .update(JSON.stringify(payload))
+      .update(body)
       .digest('hex');
   }
 }
@@ -676,7 +678,7 @@ dispatcher.register({
   url: 'https://myapp.com/webhooks/payments',
   account: 'merchant',
   events: ['transfer_received'],
-  secret: 'my-webhook-secret'
+  secret: process.env.WEBHOOK_SECRET!   // never hardcode the secret
 });
 
 // In your stream handler (one stream per merchant account):
@@ -684,6 +686,8 @@ stream.subscribeActions('eosio.token', 'transfer', 'merchant', (action) => {
   dispatcher.dispatch('transfer_received', action.data.to, action.data);
 });
 ```
+
+Receiver side: recompute the HMAC over the **raw** request body (not a re-serialized object), compare with `crypto.timingSafeEqual`, and reject anything whose `timestamp` is more than ~5 minutes old so a captured request can't be replayed.
 
 ---
 
@@ -753,7 +757,9 @@ cd block-stream && bun install
 import { BlockStreamClient } from './index';   // from the cloned repo
 
 const client = new BlockStreamClient({
-  socketAddress: 'ws://proton-ship.eosusa.io:8080',
+  // SHIP is normally private (loopback or a tunnel); if a third party exposes
+  // one, use wss:// — plain ws:// is unencrypted and unauthenticated.
+  socketAddress: 'wss://proton-ship.eosusa.io:8080',
   contracts: {
     'eosio.token': {
       tables: ['accounts'],

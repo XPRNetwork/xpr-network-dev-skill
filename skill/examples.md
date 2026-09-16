@@ -97,8 +97,11 @@ class PlayerStats extends Table {
 
 ### Oracle Integration
 
+The contract must read the oracle itself. A price passed in as an action
+argument lets the caller name the winner.
+
 ```typescript
-// Reading oracle price (done in frontend, passed to contract)
+// FRONTEND — display only. Never feed this number back into the contract.
 async function getOraclePrice(): Promise<u64> {
   const { rows } = await rpc.get_table_rows({
     code: 'oracles',
@@ -116,13 +119,62 @@ async function getOraclePrice(): Promise<u64> {
 }
 ```
 
+```typescript
+// CONTRACT — the only trusted source for start_price / end_price.
+import { Contract, TableStore, Name, check, requireAuth, currentTimeSec } from 'proton-tsc';
+import { Data, ORACLES_CONTRACT } from 'proton-tsc/oracles';
+
+private readOraclePrice(feedIndex: u64): u64 {
+  const oracleTable = new TableStore<Data>(ORACLES_CONTRACT, ORACLES_CONTRACT);
+  const data = oracleTable.requireGet(feedIndex, "Oracle feed not found");
+  // aggregate is a variant; f64Value asserts it holds a double
+  return <u64>(data.aggregate.f64Value * 100000000.0);  // 8 decimals
+}
+
+@action("resolve")
+resolve(challengeId: u64, resolver: Name): void {
+  requireAuth(resolver);
+
+  const challenge = this.challengeTable.requireGet(challengeId, "Challenge not found");
+  check(challenge.status == STATUS_ACTIVE, "Challenge not active");
+  check(currentTimeSec() >= challenge.started_at + challenge.duration, "Not yet expired");
+
+  // Read the price on-chain — NOT from an action argument
+  challenge.end_price = this.readOraclePrice(<u64>challenge.oracle_index);
+  challenge.winner = this.determineWinner(challenge);
+  challenge.status = STATUS_RESOLVED;
+  this.challengeTable.update(challenge, this.receiver);
+
+  this.distributePrize(challenge, resolver);
+}
+```
+
 ### Fee Distribution
 
+Must be a **private method**, not a free function: `this` exists only on the
+contract class, and AssemblyScript has no capturing closures — the `const pay =
+(to) => ... this.receiver ...` arrow form does not compile.
+
 ```typescript
-// In resolve action
-function distributePrize(challenge: Challenge): void {
-  const pool = challenge.amount * 2;
+import { Name, Asset, Symbol, EMPTY_NAME } from 'proton-tsc';
+import { sendTransferToken } from 'proton-tsc/token';
+
+const XPR = new Symbol("XPR", 4);
+const TOKEN = Name.fromString("eosio.token");
+
+// Called from the resolve action; `resolver` is the account that signed it.
+private distributePrize(challenge: Challenge, resolver: Name): void {
   const config = this.configSingleton.get();
+
+  // determineWinner returns EMPTY_NAME on a tie — paying it would burn the pool
+  if (challenge.winner == EMPTY_NAME) {
+    const stake = new Asset(challenge.amount, XPR);
+    sendTransferToken(TOKEN, this.receiver, challenge.creator, stake, `PriceBattle #${challenge.id} tie refund`);
+    sendTransferToken(TOKEN, this.receiver, challenge.opponent, stake, `PriceBattle #${challenge.id} tie refund`);
+    return;
+  }
+
+  const pool = challenge.amount * 2;
 
   // Calculate fees
   const totalFee = (pool * config.fee_percent) / 100;
@@ -130,22 +182,20 @@ function distributePrize(challenge: Challenge): void {
   const treasuryFee = totalFee - resolverFee;
   const winnerPrize = pool - totalFee;
 
-  // Token transfers: proton-tsc has no sendInline/formatAsset helpers.
-  // Use sendTransferToken from 'proton-tsc/token' (an inline eosio.token::transfer).
-  const XPR = new Symbol("XPR", 4);
-  const pay = (to: Name, amount: u64, memo: string): void =>
-    sendTransferToken(Name.fromString('eosio.token'), this.receiver, to, new Asset(amount, XPR), memo);
-
-  pay(challenge.winner, winnerPrize, `PriceBattle #${challenge.id} winnings`);
-  pay(config.treasury, treasuryFee, `PriceBattle #${challenge.id} treasury fee`);
-  pay(resolver, resolverFee, `PriceBattle #${challenge.id} resolver reward`);
+  // proton-tsc has no sendInline/formatAsset helpers; sendTransferToken from
+  // 'proton-tsc/token' is the shipped inline eosio.token::transfer.
+  sendTransferToken(TOKEN, this.receiver, challenge.winner, new Asset(winnerPrize, XPR), `PriceBattle #${challenge.id} winnings`);
+  sendTransferToken(TOKEN, this.receiver, config.treasury, new Asset(treasuryFee, XPR), `PriceBattle #${challenge.id} treasury fee`);
+  sendTransferToken(TOKEN, this.receiver, resolver, new Asset(resolverFee, XPR), `PriceBattle #${challenge.id} resolver reward`);
 }
 ```
 
 ### Resolution Logic
 
 ```typescript
-function determineWinner(challenge: Challenge): Name {
+private determineWinner(challenge: Challenge): Name {
+  const config = this.configSingleton.get();
+
   // Check for tie (price didn't move enough)
   const priceDiff = challenge.end_price > challenge.start_price
     ? challenge.end_price - challenge.start_price
@@ -154,7 +204,7 @@ function determineWinner(challenge: Challenge): Name {
   const minMove = (challenge.start_price * config.min_price_move_bps) / 10000;
 
   if (priceDiff < minMove) {
-    return EMPTY_NAME;  // Tie
+    return EMPTY_NAME;  // Tie — distributePrize refunds both stakes
   }
 
   const priceWentUp = challenge.end_price > challenge.start_price;
@@ -193,6 +243,11 @@ onTransfer(from: Name, to: Name, quantity: Asset, memo: string): void {
   // Only process transfers TO this contract
   if (to != this.receiver) return;
 
+  // Only accept the real XPR contract. Without this, anyone can deploy a token
+  // contract, notify this one with a fake "4,XPR" asset and a bad memo, and be
+  // refunded in real XPR.
+  if (this.firstReceiver != Name.fromString("eosio.token")) return;
+
   // Only accept XPR
   if (quantity.symbol != XPR_SYMBOL) return;
 
@@ -227,6 +282,9 @@ class Post extends Table {
     public pin_expires: u64 = 0,
     public is_deleted: bool = false  // Soft delete
   ) { super(); }
+
+  @primary
+  get primary(): u64 { return this.id; }
 }
 
 @action("moderate")
@@ -286,10 +344,9 @@ private handlePost(from: Name, quantity: Asset, content: string): void {
 }
 
 private refund(to: Name, quantity: Asset, memo: string): void {
-  const transfer = new InlineAction<TransferArgs>("transfer");
-  transfer
-    .act(Name.fromString("eosio.token"), new PermissionLevel(this.receiver, Name.fromString("active")))
-    .send(new TransferArgs(this.receiver, to, quantity, memo));
+  // sendTransferToken from 'proton-tsc/token' is the SDK's inline
+  // eosio.token::transfer — no hand-rolled @packer args class needed.
+  sendTransferToken(Name.fromString("eosio.token"), this.receiver, to, quantity, memo);
 }
 ```
 
@@ -480,22 +537,28 @@ setOwner(newOwner: Name): void {
 cleanup(limit: u8): void {
   // Anyone can call to clean up expired entries
   const now = currentTimeSec();
-  let count: u8 = 0;
+  let removed: u8 = 0;
+  let scanned: u16 = 0;
+  const maxScan: u16 = <u16>limit * 4;
 
   let cursor = this.challengeTable.first();
-  while (cursor && count < limit) {
+  // Bound the SCAN, not just the removals: `count < limit` alone still walks the
+  // whole table when nothing is expired, and blows the CPU limit.
+  while (cursor && removed < limit && scanned < maxScan) {
     const next = this.challengeTable.next(cursor);
+    scanned++;
 
     // Check if expired
     if (cursor.status == STATUS_OPEN &&
         cursor.created_at + EXPIRY_SECONDS < now) {
 
-      // Refund creator
-      this.refund(cursor.creator, cursor.amount);
+      // Refund creator's stake (refund takes an Asset and a memo)
+      this.refund(cursor.creator, new Asset(cursor.amount, XPR_SYMBOL),
+                  `PriceBattle #${cursor.id} expired`);
 
       // Remove challenge
       this.challengeTable.remove(cursor);
-      count++;
+      removed++;
     }
 
     cursor = next;

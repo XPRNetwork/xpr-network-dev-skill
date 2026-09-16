@@ -355,7 +355,8 @@ npx tsc --noEmit
 # List stored keys
 proton key:list
 
-# Add the key
+# Add the key — interactive `proton key:add` is preferred; passing the key as an
+# argument writes it to shell history and exposes it in `ps` while the command runs.
 proton key:add PVT_K1_xxxxx
 ```
 

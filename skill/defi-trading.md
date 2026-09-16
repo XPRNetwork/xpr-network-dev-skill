@@ -928,21 +928,23 @@ For the canonical list of swap routes a MetalX user can actually take, see [docs
 Swaps are done via token transfer to `proton.swaps` with a memo specifying the output token:
 
 ```bash
-# Swap 1000 XPR → XUSDC (minimum 1 XUSDC out)
+# Swap 1000 XPR → XUSDC — expect ~2.20 XUSDC, accept 0.5% slippage
+# 2189000 = 2.189000 XUSDC in raw units (6 decimals); see "Slippage Protection" below
 proton action eosio.token transfer \
-  '{"from":"myaccount","to":"proton.swaps","quantity":"1000.0000 XPR","memo":"XPRUSDC,1"}' \
+  '{"from":"myaccount","to":"proton.swaps","quantity":"1000.0000 XPR","memo":"XPRUSDC,2189000"}' \
   myaccount
 
-# Swap 10 XUSDC → XPR (minimum 1 XPR out)
+# Swap 10 XUSDC → XPR — expect ~4545 XPR, accept 0.5% slippage
+# 45227000 = 4522.7000 XPR in raw units (4 decimals)
 proton action xtokens transfer \
-  '{"from":"myaccount","to":"proton.swaps","quantity":"10.000000 XUSDC","memo":"XPRUSDC,1"}' \
+  '{"from":"myaccount","to":"proton.swaps","quantity":"10.000000 XUSDC","memo":"XPRUSDC,45227000"}' \
   myaccount
 ```
 
 **Memo format:** `<POOL_LT_SYMBOL>,<MIN_OUTPUT>`
 
 - `POOL_LT_SYMBOL`: The LP token symbol (e.g., `XPRUSDC`)
-- `MIN_OUTPUT`: Minimum amount to receive (slippage protection, use `1` for no minimum)
+- `MIN_OUTPUT`: Minimum amount to receive, as a raw integer in the output token's precision (slippage protection). `1` disables protection entirely and must not be used in production — compute a real bound as shown under *Slippage Protection* below.
 
 The contract automatically determines direction based on which token you send.
 
@@ -1001,7 +1003,7 @@ const memo = `XPRUSDC,${minOut}`;
 - **Stablecoin → stablecoin** swaps: 0.1–0.3% slippage is usually fine.
 - **Volatile pair** with thin liquidity: 0.5–1% to absorb intra-block price drift.
 - **Multi-hop via `proton.swaps`**: prefer the official routing API; manual multi-hop slippage compounds across legs and you'll need to widen tolerance per hop.
-- **Don't use `MIN_OUTPUT = 1`** in production — that disables slippage protection entirely. The doc snippet earlier uses `1` for clarity, not as a recommendation.
+- **Don't use `MIN_OUTPUT = 1`** in production — that disables slippage protection entirely and hands the whole trade to whoever moves the pool first.
 
 `maxSent` / `maxIn` works the same way for `EXACT_OUTPUT`-style swaps if/when the AMM exposes that mode; the current `proton.swaps` transfer-memo path is `EXACT_INPUT` only.
 
