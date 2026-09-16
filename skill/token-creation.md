@@ -75,7 +75,10 @@ class Token extends Contract {
     check(maximum_supply.isValid(), "Invalid supply");
     check(maximum_supply.amount > 0, "Max supply must be positive");
 
-    const statsTable = new TableStore<CurrencyStats>(this.receiver, sym.code());
+    // TableStore's second argument is the SCOPE and its type is Name, not u64:
+    // wrap the symbol code (`new Name(sym.code())`) and pass accounts by `owner`,
+    // not `owner.N`.
+    const statsTable = new TableStore<CurrencyStats>(this.receiver, new Name(sym.code()));
     check(!statsTable.exists(sym.code()), "Token already exists");
 
     const stats = new CurrencyStats(
@@ -93,7 +96,7 @@ class Token extends Contract {
     check(sym.isValid(), "Invalid symbol");
     check(memo.length <= 256, "Memo too long");
 
-    const statsTable = new TableStore<CurrencyStats>(this.receiver, sym.code());
+    const statsTable = new TableStore<CurrencyStats>(this.receiver, new Name(sym.code()));
     const stats = statsTable.requireGet(sym.code(), "Token does not exist");
 
     requireAuth(stats.issuer);
@@ -116,7 +119,7 @@ class Token extends Contract {
     check(sym.isValid(), "Invalid symbol");
     check(memo.length <= 256, "Memo too long");
 
-    const statsTable = new TableStore<CurrencyStats>(this.receiver, sym.code());
+    const statsTable = new TableStore<CurrencyStats>(this.receiver, new Name(sym.code()));
     const stats = statsTable.requireGet(sym.code(), "Token does not exist");
 
     requireAuth(stats.issuer);
@@ -139,7 +142,7 @@ class Token extends Contract {
     check(isAccount(to), "Recipient does not exist");
 
     const sym = quantity.symbol;
-    const statsTable = new TableStore<CurrencyStats>(this.receiver, sym.code());
+    const statsTable = new TableStore<CurrencyStats>(this.receiver, new Name(sym.code()));
     const stats = statsTable.requireGet(sym.code(), "Token does not exist");
 
     // Notify sender and receiver
@@ -162,10 +165,10 @@ class Token extends Contract {
   open(owner: Name, symbol: Symbol, ram_payer: Name): void {
     requireAuth(ram_payer);
 
-    const statsTable = new TableStore<CurrencyStats>(this.receiver, symbol.code());
+    const statsTable = new TableStore<CurrencyStats>(this.receiver, new Name(symbol.code()));
     check(statsTable.exists(symbol.code()), "Token does not exist");
 
-    const accountsTable = new TableStore<Account>(this.receiver, owner.N);
+    const accountsTable = new TableStore<Account>(this.receiver, owner);
     if (!accountsTable.exists(symbol.code())) {
       const account = new Account(new Asset(0, symbol));
       accountsTable.store(account, ram_payer);
@@ -177,7 +180,7 @@ class Token extends Contract {
   close(owner: Name, symbol: Symbol): void {
     requireAuth(owner);
 
-    const accountsTable = new TableStore<Account>(this.receiver, owner.N);
+    const accountsTable = new TableStore<Account>(this.receiver, owner);
     const account = accountsTable.requireGet(symbol.code(), "Balance not found");
     check(account.balance.amount == 0, "Cannot close non-zero balance");
     accountsTable.remove(account);
@@ -185,7 +188,11 @@ class Token extends Contract {
 
   // Helper: subtract from balance
   private subBalance(owner: Name, value: Asset): void {
-    const accountsTable = new TableStore<Account>(this.receiver, owner.N);
+    // Asset.amount is i64 and isValid() accepts negatives: a negative subtract
+    // would MINT tokens. Gate every balance mutation on a positive amount.
+    check(value.amount > 0, "Amount must be positive");
+
+    const accountsTable = new TableStore<Account>(this.receiver, owner);
     const from = accountsTable.requireGet(value.symbol.code(), "No balance");
     check(from.balance.amount >= value.amount, "Insufficient balance");
 
@@ -195,7 +202,9 @@ class Token extends Contract {
 
   // Helper: add to balance
   private addBalance(owner: Name, value: Asset, ram_payer: Name): void {
-    const accountsTable = new TableStore<Account>(this.receiver, owner.N);
+    check(value.amount > 0, "Amount must be positive");
+
+    const accountsTable = new TableStore<Account>(this.receiver, owner);
     let to = accountsTable.get(value.symbol.code());
 
     if (!to) {
@@ -323,7 +332,20 @@ transfer(from: Name, to: Name, quantity: Asset, memo: string): void {
   const config = this.configSingleton.get();
   check(!config.paused, "Token transfers are paused");
 
-  // ... standard transfer logic
+  // The pause check is an ADDITION, not a replacement — every standard transfer
+  // check still has to run, in full:
+  check(from != to, "Cannot transfer to self");
+  requireAuth(from);
+  check(isAccount(to), "Recipient does not exist");
+  check(quantity.isValid(), "Invalid quantity");
+  check(quantity.amount > 0, "Must transfer positive quantity");
+  check(memo.length <= 256, "Memo too long");
+
+  requireRecipient(from);
+  requireRecipient(to);
+
+  this.subBalance(from, quantity);
+  this.addBalance(to, quantity, hasAuth(to) ? to : from);
 }
 
 @action("pause")
@@ -343,10 +365,15 @@ mint(to: Name, quantity: Asset): void {
   const config = this.configSingleton.get();
   requireAuth(config.owner);
 
+  check(quantity.isValid(), "Invalid quantity");
+  // A negative amount would pass the cap check below and still credit `to`
+  check(quantity.amount > 0, "Must mint positive quantity");
+
   // Check against max supply
-  const statsTable = new TableStore<CurrencyStats>(this.receiver, quantity.symbol.code());
+  const statsTable = new TableStore<CurrencyStats>(this.receiver, new Name(quantity.symbol.code()));
   const stats = statsTable.requireGet(quantity.symbol.code(), "Token not found");
 
+  check(quantity.symbol == stats.max_supply.symbol, "Symbol mismatch");
   check(
     stats.supply.amount + quantity.amount <= stats.max_supply.amount,
     "Would exceed max supply"
@@ -365,9 +392,15 @@ mint(to: Name, quantity: Asset): void {
 @action("burn")
 burn(from: Name, quantity: Asset, memo: string): void {
   requireAuth(from);
+  check(memo.length <= 256, "Memo too long");
 
-  const statsTable = new TableStore<CurrencyStats>(this.receiver, quantity.symbol.code());
+  const statsTable = new TableStore<CurrencyStats>(this.receiver, new Name(quantity.symbol.code()));
   const stats = statsTable.requireGet(quantity.symbol.code(), "Token not found");
+
+  check(quantity.isValid(), "Invalid quantity");
+  // Asset.amount is i64: a negative burn mints supply and credits `from`
+  check(quantity.amount > 0, "Must burn positive quantity");
+  check(quantity.symbol == stats.supply.symbol, "Symbol mismatch");
 
   this.subBalance(from, quantity);
 
@@ -391,12 +424,23 @@ class Config extends Table {
 transfer(from: Name, to: Name, quantity: Asset, memo: string): void {
   check(from != to, "Cannot transfer to self");
   requireAuth(from);
+  check(isAccount(to), "Recipient does not exist");
+  check(quantity.isValid(), "Invalid quantity");
+  // Negative amount inverts the fee maths and credits `to` out of thin air
+  check(quantity.amount > 0, "Must transfer positive quantity");
+  check(memo.length <= 256, "Memo too long");
+
+  // A token contract must notify both sides, or every notify-based dApp
+  // integrating this token silently misses the transfer.
+  requireRecipient(from);
+  requireRecipient(to);
 
   const config = this.configSingleton.get();
 
   // Calculate fee
   const feeAmount = (quantity.amount * config.fee_percent) / 10000;
   const netAmount = quantity.amount - feeAmount;
+  check(netAmount > 0, "Amount too small after fee");
 
   // Transfer net amount to recipient
   this.subBalance(from, quantity);
@@ -418,16 +462,44 @@ Wrapped tokens represent assets from other chains:
 ### Wrap Pattern
 
 ```typescript
+import { Table, TableStore, Name, Asset, Symbol, Utils, sha256,
+         check, requireAuth } from 'proton-tsc';
+
+@table("usedhashes")
+class UsedHash extends Table {
+  constructor(
+    public key: u64 = 0,          // first 8 bytes of sha256(txHash)
+    public tx_hash: string = ""   // full hash kept so a key collision is visible
+  ) { super(); }
+
+  @primary
+  get primary(): u64 { return this.key; }
+}
+
+// Table primary keys are u64, so a hex tx hash has to be folded down to one.
+private hashKey(txHash: string): u64 {
+  const digest = sha256(Utils.stringToU8Array(txHash)).data;
+  let key: u64 = 0;
+  for (let i = 0; i < 8; i++) {
+    key = (key << 8) | <u64>digest[i];
+  }
+  return key;
+}
+
 @action("wrap")
 wrap(account: Name, amount: u64, txHash: string): void {
   // Only bridge contract can wrap
   requireAuth(this.receiver);
 
-  // Verify tx hash hasn't been used
-  check(!this.usedHashes.exists(txHash), "Already wrapped");
+  check(amount > 0, "Amount must be positive");
+  check(txHash.length > 0, "Tx hash required");
+
+  // Verify tx hash hasn't been used — exists() takes a u64 primary key
+  const key = this.hashKey(txHash);
+  check(!this.usedHashes.exists(key), "Already wrapped");
 
   // Record hash
-  this.usedHashes.store(new UsedHash(txHash), this.receiver);
+  this.usedHashes.store(new UsedHash(key, txHash), this.receiver);
 
   // Mint wrapped tokens
   const quantity = new Asset(amount, WRAPPED_SYMBOL);
@@ -437,6 +509,12 @@ wrap(account: Name, amount: u64, txHash: string): void {
 @action("unwrap")
 unwrap(account: Name, quantity: Asset, destinationAddress: string): void {
   requireAuth(account);
+
+  check(quantity.isValid(), "Invalid quantity");
+  // Negative amount would turn this burn into a mint
+  check(quantity.amount > 0, "Must unwrap positive quantity");
+  check(quantity.symbol == WRAPPED_SYMBOL, "Wrong token");
+  check(destinationAddress.length > 0, "Destination address required");
 
   // Burn wrapped tokens
   this.subBalance(account, quantity);
@@ -497,6 +575,13 @@ async function airdrop(
 ## Token Vesting
 
 ```typescript
+import { Contract, Table, TableStore, Name, Asset, Symbol, U128,
+         check, requireAuth, currentTimeSec } from 'proton-tsc';
+import { sendTransferToken } from 'proton-tsc/token';
+
+const TOKEN_CONTRACT = Name.fromString("mytokencontract");
+const VEST_SYMBOL = new Symbol("MYTKN", 4);
+
 @table("vesting")
 class VestingSchedule extends Table {
   constructor(
@@ -525,14 +610,20 @@ createVesting(
 ): void {
   requireAuth(this.receiver);
 
+  check(amount.amount > 0, "Amount must be positive");
+  check(vestingDays > 0, "Vesting duration must be positive");
+  check(vestingDays >= cliffDays, "Cliff longer than vesting period");
+
   const schedule = new VestingSchedule(
     this.vestingTable.availablePrimaryKey,
     beneficiary,
     amount.amount,
     0,
     currentTimeSec(),
-    cliffDays * 86400,
-    vestingDays * 86400
+    // Cast BEFORE multiplying: `cliffDays * 86400` is u32 arithmetic and wraps
+    // above ~49,710 days.
+    <u64>cliffDays * 86400,
+    <u64>vestingDays * 86400
   );
 
   this.vestingTable.store(schedule, this.receiver);
@@ -554,7 +645,10 @@ claim(vestingId: u64): void {
   if (elapsed >= schedule.vesting_duration) {
     vestedAmount = schedule.total_amount;
   } else {
-    vestedAmount = (schedule.total_amount * elapsed) / schedule.vesting_duration;
+    // total_amount * elapsed overflows u64 for large grants over long schedules
+    // (e.g. 1e14 units * 1e8 seconds), so do the multiply in u128.
+    vestedAmount = (U128.from(schedule.total_amount) * U128.from(elapsed)
+                    / U128.from(schedule.vesting_duration)).toU64();
   }
 
   const claimable = vestedAmount - schedule.claimed_amount;
@@ -564,8 +658,15 @@ claim(vestingId: u64): void {
   schedule.claimed_amount += claimable;
   this.vestingTable.update(schedule, this.receiver);
 
-  // Transfer tokens
-  this.transferTokens(schedule.beneficiary, claimable);
+  // Transfer tokens — sendTransferToken from 'proton-tsc/token' is the SDK's
+  // inline eosio.token::transfer; there is no `transferTokens` helper.
+  sendTransferToken(
+    TOKEN_CONTRACT,
+    this.receiver,
+    schedule.beneficiary,
+    new Asset(claimable, VEST_SYMBOL),
+    `Vesting claim #${schedule.id}`
+  );
 }
 ```
 

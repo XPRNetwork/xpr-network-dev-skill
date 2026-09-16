@@ -163,7 +163,7 @@ Choose BPs who:
 #### Via CLI
 
 ```bash
-# Vote for block producers (minimum 4)
+# Vote for block producers (exactly 4 — fewer or more forfeits staking rewards)
 proton action eosio voteproducer '{"voter":"myaccount","proxy":"","producers":["bp1","bp2","bp3","bp4"]}' myaccount
 ```
 

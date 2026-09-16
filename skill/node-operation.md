@@ -103,7 +103,8 @@ plugin = eosio::net_plugin
 plugin = eosio::net_api_plugin
 
 # HTTP settings
-http-server-address = 0.0.0.0:8888
+# Bind to loopback only — nginx fronts the HTTP API (see Reverse Proxy below)
+http-server-address = 127.0.0.1:8888
 access-control-allow-origin = *
 
 # Billing
@@ -134,11 +135,13 @@ p2p-peer-address = p2p.luminaryvisn.com:9876
 ### Firewall Configuration
 
 ```bash
-# Open required ports
-sudo ufw allow 8888/tcp   # HTTP API
-sudo ufw allow 9876/tcp   # P2P
+# Allow SSH FIRST — enabling ufw without this rule drops your SSH session
+sudo ufw allow OpenSSH     # or: sudo ufw allow 22/tcp
+sudo ufw allow 9876/tcp    # P2P
 sudo ufw enable
 ```
+
+Don't open 8888 directly. The HTTP API stays bound to `127.0.0.1` and is reached through the nginx proxy described later in this file (port 443 only).
 
 ### Start Node
 
@@ -230,8 +233,9 @@ p2p-peer-address = p2p-testnet-proton.eosarabia.net:9876
 Create a dedicated key pair for block signing (separate from account keys):
 
 ```bash
-# Create wallet
-cleos wallet create --file wallet_pass.txt
+# Create wallet — keep the password file outside the node directory
+cleos wallet create --file ~/.wallet_pass.txt
+chmod 600 ~/.wallet_pass.txt
 
 # Generate signing key
 cleos create key --to-console
@@ -255,6 +259,8 @@ Add to `config.ini`:
 ```ini
 # Block producer settings
 producer-name = youraccount
+# Plaintext private key on disk: run `chmod 600 config.ini` and never commit it.
+# Safer: keep the key in keosd and use `signature-provider = PUB_KEY=KEOSD:http://127.0.0.1:8900`
 signature-provider = PUB_KEY=KEY:PRIV_KEY
 
 # Producer plugin
@@ -269,10 +275,9 @@ abi-serializer-max-time-ms = 2000
 ### Security Hardening
 
 ```ini
-# Restrict producer API to localhost only
+# Mandatory on a BP: producer_api_plugin is enabled above, so the HTTP API must
+# never be reachable off-box. Bind to loopback — a firewall rule is not a substitute.
 http-server-address = 127.0.0.1:8888
-
-# Or use firewall to block external access to producer endpoints
 ```
 
 ### CPU Performance
@@ -305,14 +310,15 @@ plugin = eosio::net_plugin
 
 # Enable state history for Hyperion
 plugin = eosio::state_history_plugin
-state-history-endpoint = 0.0.0.0:8080
+state-history-endpoint = 127.0.0.1:8080     # NEVER expose SHIP publicly
 trace-history = true
 chain-state-history = true
 
 # HTTP settings
-http-server-address = 0.0.0.0:8888
+# Bind to loopback only — nginx fronts the HTTP API (see Reverse Proxy below)
+http-server-address = 127.0.0.1:8888
 http-max-response-time-ms = 100
-http-validate-host = false
+http-validate-host = false                  # safe only because nginx sets Host
 access-control-allow-origin = *
 access-control-allow-headers = *
 
@@ -359,10 +365,12 @@ For running a full history node with Hyperion:
 
 ```ini
 plugin = eosio::state_history_plugin
-state-history-endpoint = 0.0.0.0:8080
+state-history-endpoint = 127.0.0.1:8080     # NEVER expose SHIP publicly
 trace-history = true
 chain-state-history = true
 ```
+
+A remote indexer reaches SHIP over a private network interface or an SSH tunnel — never over the public internet.
 
 ### Hyperion Installation
 
@@ -399,6 +407,25 @@ zstd -d latest-snapshot.bin.zst
 # 4) Start nodeos from the snapshot
 nodeos --snapshot latest-snapshot.bin
 ```
+
+### Verify the Snapshot
+
+A snapshot is unsigned state from an untrusted mirror — check it before trusting the node:
+
+```bash
+# 1) Chain id must be mainnet's
+curl -s http://127.0.0.1:8888/v1/chain/get_info | jq -r '.chain_id'
+# expect: 384da888112027f0321850a169f737c33e53b388aad48b5adace4bab97f437e0
+
+# 2) Once synced to head, the head block id must match two independent public endpoints
+BLOCK=$(curl -s http://127.0.0.1:8888/v1/chain/get_info | jq -r '.head_block_num')
+for API in https://api.protonnz.com https://proton.eosusa.io; do
+  curl -s "$API/v1/chain/get_block" -d "{\"block_num_or_id\":$BLOCK}" | jq -r '.id'
+done
+curl -s http://127.0.0.1:8888/v1/chain/get_block -d "{\"block_num_or_id\":$BLOCK}" | jq -r '.id'
+```
+
+A mismatched chain id or block id means the snapshot is from another chain or a forked node — discard it.
 
 ### Create Snapshot
 
@@ -439,14 +466,22 @@ exit 0
 
 ### Prometheus Metrics
 
-Use nodeos metrics endpoint or community exporters:
+nodeos exposes metrics only when the plugin is loaded. Add to `config.ini`:
+
+```ini
+plugin = eosio::prometheus_plugin
+prometheus-exporter-address = 127.0.0.1:9101
+```
+
+Then scrape that address (not 8888):
 
 ```yaml
 # prometheus.yml
 scrape_configs:
   - job_name: 'nodeos'
+    metrics_path: /v1/prometheus/metrics
     static_configs:
-      - targets: ['localhost:8888']
+      - targets: ['localhost:9101']
 ```
 
 ### Alerting

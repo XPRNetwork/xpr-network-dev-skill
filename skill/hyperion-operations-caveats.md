@@ -1,6 +1,6 @@
 # XPR Network Hyperion — Operations & Caveats (hard-won)
 
-Field notes from the protonnz full-history build (July 2026), including several multi-day incidents. Sections are numbered in the order discovered — §0 was found last and explains much of what §5.5 originally attributed to chain density. Everything here was hit in practice or confirmed by other XPR Network operators and the Hyperion maintainers. Read this before sizing hardware or debugging a stalled indexer. Setup steps live in [`hyperion-setup.md`](hyperion-setup.md).
+Field notes from a production full-history build on XPR mainnet (July 2026), including several multi-day incidents. Sections are numbered in the order discovered — §0 was found last and explains much of what §5.5 originally attributed to chain density. Everything here was hit in practice or confirmed by other XPR Network operators and the Hyperion maintainers. Read this before sizing hardware or debugging a stalled indexer. Setup steps live in [`hyperion-setup.md`](hyperion-setup.md).
 
 Every CLI subcommand and config key named below was checked against the upstream `eosrio/hyperion-history-api` source (4.1.0, September 2026).
 
@@ -14,7 +14,7 @@ What that does on XPR: DEX actions carry arbitrary keys in `act.data` (`"136|XMD
 
 **Detection:** compare partitions: `GET proton-action-v1-0000NN/_mapping` — healthy ≈ 100-120 fields, poisoned ≈ 997+; healthy = 4 shards, poisoned = 1. Log will be full of `Limit of total fields [1000] exceeded`.
 
-**Fix:** `DELETE _index_template/<yours>`; delete the malformed partition index; purge the poisoned action queues (safe ONLY because the range gets re-read from SHIP); re-run the range. With the legacy template back in charge we measured ~4,900 blocks/sec through the same "impossibly dense" era that crawled at ~2/sec.
+**Fix:** `DELETE _index_template/<yours>`; delete the malformed partition index — first `GET /proton-action-v1-0000NN/_count` and **confirm with the operator before deleting**, never unattended; purge the poisoned action queues (safe ONLY because the range gets re-read from SHIP); re-run the range. With the legacy template back in charge we measured ~4,900 blocks/sec through the same "impossibly dense" era that crawled at ~2/sec.
 
 **And the kicker: `best_compression` is already Hyperion's default** (`src/indexer/definitions/index-templates.ts`) — check `GET <index>/_settings` before "adding" it. To change replicas/codec on FUTURE indices, edit Hyperion's own legacy templates (`PUT _template/proton-action` with its full body modified), never a composable overlay.
 
@@ -35,7 +35,7 @@ What that does on XPR: DEX actions carry arbitrary keys in `act.data` (`"136|XMD
 - One operator runs full history with every index on a **7.68TB** drive — that's *years* of headroom, not a requirement — and considers 4TB no longer comfortable for a full node.
 - **Replicas double storage.** Run `es_replicas: 0` (single node) — one operator halved their footprint the moment they removed replicas.
 
-### The projection trap that cost us days
+### The projection trap that costs days
 Do **NOT** measure the ES disk-fill rate during the **December 2023 Metal X DEX peak** and extrapolate it. That era runs ~27.6 GB/million blocks — roughly **10× the sustained rate** (dex `process`/`logorder`/`processltp` flood). Extrapolating the peak across the whole remaining chain over-projected action-only to **5.2TB** when the real figure is ~1.4TB. Trust whole-chain operator numbers (~2TB) over a short in-peak measurement.
 
 **Implication:** a 2×1.92TB box (split ES/SHIP) **can hold action-only full history** on its 1.9TB ES drive. Full-with-deltas (~2TB) needs a drive >2TB (4TB or 7.68TB).
@@ -48,15 +48,16 @@ Do **NOT** measure the ES disk-fill rate during the **December 2023 Metal X DEX 
 
 **Cause:** Redis periodic RDB background-save (`save 3600 1 …`) writes a `temp-NNNNNN.rdb`, then renames to `dump.rdb`. If a save is **interrupted** (disk full, OOM, process churn, restarts), the temp file is **orphaned**. Under disk pressure + repeated restarts these **cascade** — we accumulated **35 files / 425GB** of junk in one bad afternoon (8.9G, 9.4G, 23G, 20G… each a failed save).
 
-**This was a major contributor to our "disk full at block 230M" incident** — ES was only ~1TB there; 425GB of Redis garbage pushed the drive to 92%.
+**This was a major contributor to a "disk full at block 230M" incident on one production node** — ES was only ~1TB there; 425GB of Redis garbage pushed the drive to 92%.
 
-**Fix (safe — Redis doesn't use temp files):**
+**Fix (safe only for STALE temp files — a live BGSAVE is writing one right now):**
 ```bash
+redis-cli INFO persistence | grep rdb_bgsave_in_progress   # MUST be 0 before you delete anything
 ls -lah /var/lib/redis/temp-*.rdb          # confirm they're stale (old dates)
 rm -f /var/lib/redis/temp-*.rdb            # reclaim
 redis-cli ping                             # confirm still healthy
 ```
-**Part 2 of the Redis saga (it WILL escalate):** during high-speed indexing (~5k blocks/s) Hyperion's Redis usage balloons unbounded — ours hit **84GB RSS and got OOM-killed**, then entered a **systemd restart crashloop** (loading its 40GB dump exceeds the 90s start timeout → killed → retry, 45 attempts). With Redis down, indexer workers wedge with `ioredis ECONNREFUSED` — looks like yet another consumer stall. Operators had warned about exactly this: cap Redis memory, because unbounded Redis stops the queues.
+**Part 2 of the Redis saga (it WILL escalate):** during high-speed indexing (~5k blocks/s) Hyperion's Redis usage balloons unbounded — one production node hit **84GB RSS and got OOM-killed**, then entered a **systemd restart crashloop** (loading its 40GB dump exceeds the 90s start timeout → killed → retry, 45 attempts). With Redis down, indexer workers wedge with `ioredis ECONNREFUSED` — looks like yet another consumer stall. Operators had warned about exactly this: cap Redis memory, because unbounded Redis stops the queues.
 
 **Permanent fix (Hyperion's Redis is rebuildable cache/coordination):**
 ```
@@ -88,9 +89,14 @@ df -h /                                                   # ES drive % — near 
 curl -s -u elastic:$P localhost:9200/_cluster/health      # status: red? unassigned_shards>0?
 curl -s -u elastic:$P 'localhost:9200/_cat/indices/proton-action-*?v&s=index' | tail  # a RED partition?
 ```
-We wasted hours chasing a "deserializer stall" that was purely disk. Experienced operators warn about this directly: once the ES data drive hits ~90% it flips read-only and causes a lot of pain.
+Hours were lost on that node chasing a "deserializer stall" that was purely disk. Experienced operators warn about this directly: once the ES data drive hits ~90% it flips read-only and causes a lot of pain.
 
-**Recovery:** free space (see §2), delete the empty RED partition indices (`DELETE /proton-*-v1-0000NN` — safe if 0 docs) to get the cluster green, then resume.
+**Recovery:** free space (see §2), delete the empty RED partition indices to get the cluster green, then resume. Check emptiness first — `GET /proton-action-v1-0000NN/_count` must return `0` — and **confirm with the operator before deleting**; an agent never runs this unattended:
+
+```
+GET /proton-action-v1-0000NN/_count     # must be 0
+DELETE /proton-action-v1-0000NN         # only after operator confirmation
+```
 
 ---
 
@@ -98,7 +104,7 @@ We wasted hours chasing a "deserializer stall" that was purely disk. Experienced
 
 **Rule (every experienced operator repeats it):** don't restart the indexer with docs in the queues or you will be missing data. Purging RabbitMQ queues or restarting while the ds_pool/index queues hold documents **drops those actions/deltas** — leaving **silent gaps** that pass a "range completed" check but fail on `get_actions`.
 
-We purged all `proton:*` queues and restarted repeatedly during the 230M disk incident → **small action gaps around block ~230M** (later confirmed and repaired, §11).
+Purging all `proton:*` queues and restarting repeatedly during the 230M disk incident led to **small action gaps around block ~230M** (later confirmed and repaired, §11).
 
 **Correct resume:** just `pm2 start proton-indexer` — the queued docs get *processed*, not lost. Only **purge** if you know the queues are empty.
 
@@ -115,7 +121,7 @@ We purged all `proton:*` queues and restarted repeatedly during the 230M disk in
 ## 5. Compression, replicas and forcemerge (space reclaim)
 
 - **`index.codec: best_compression` is Hyperion's default** (§0). It is ~30% smaller than the default codec and operators running full XPR history on enterprise NVMe report no measurable query-latency cost. Verify with `GET proton-action-v1-0000NN/_settings` rather than adding it.
-- **Do not add a composable `_index_template` to set codec or replicas.** It replaces Hyperion's legacy template wholesale (§0) and, as a second-order effect, new partitions come up with ES's default of **1 replica** instead of Hyperion's `es_replicas: 0` — **yellow** on a single node with an unassigned replica. If you already did this: `DELETE _index_template/<yours>`, then fix existing indices with `PUT /proton-*/_settings {"index":{"number_of_replicas":0}}`.
+- **Do not add a composable `_index_template` to set codec or replicas.** It replaces Hyperion's legacy template wholesale (§0) and, as a second-order effect, new partitions come up with ES's default of **1 replica** instead of Hyperion's `es_replicas: 0` — **yellow** on a single node with an unassigned replica. If you already did this: `DELETE _index_template/<yours>` (the template only — confirm with the operator before deleting anything under `/proton-*`), then fix existing indices with `PUT /proton-*/_settings {"index":{"number_of_replicas":0}}`.
 - To change settings for future partitions, modify Hyperion's own legacy template body (`GET _template/proton-action`, edit, `PUT _template/proton-action`) so mappings and shard counts survive.
 - **`forcemerge`** reclaims disk from documents marked for deletion, but it takes time and is I/O-heavy — run it when **not** actively indexing. Existing indices keep their codec until reindexed/force-merged.
 
@@ -166,9 +172,9 @@ A plain `pm2 restart` does NOT reliably work: RabbitMQ doesn't notice the old co
 
 ---
 
-## 8. Hardware sourcing (Hetzner constraint + funding)
+## 8. Hardware sourcing (fixed-storage hosts + funding)
 
-- **Hetzner standard dedicated models (AX/EX) cannot have drives added after ordering** — storage is fixed at order via the configurator (confirmed with Hetzner support). Size storage at purchase, or use the **Hetzner Server Auction** for storage-heavy boxes.
+- **Many dedicated-host product lines cannot have drives added after ordering** — storage is fixed at order time (confirm with the host's support before buying). Size storage at purchase, or look at the host's auction / refurbished inventory for storage-heavy boxes.
 - **XPR governance funds public Hyperion hardware.** Precedent: a block producer's "Hyperion API Deployment" governance proposal (Jan 2024) requested **$2,400 for hardware** and passed **unanimously (1.09B XPR, 100%)**; the operator bears colocation/power/bandwidth. The network explicitly wants **≥5 healthy public Hyperion APIs**. A one-time hardware grant for a public node is a viable, precedented path.
 
 ---

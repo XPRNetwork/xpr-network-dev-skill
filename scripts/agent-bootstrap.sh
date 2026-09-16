@@ -14,6 +14,12 @@ set -euo pipefail
 SKILL_DIR="${SKILL_DIR:-./skills/xpr-network-dev}"
 SKILL_REPO="${SKILL_REPO:-https://github.com/XPRNetwork/xpr-network-dev-skill}"
 RPC_ENDPOINT="${RPC_ENDPOINT:-https://proton.eosusa.io}"
+# Pinned versions: this host goes on to hold a signing key, so never pull
+# "latest" here. Bump deliberately after reviewing the upstream changelog.
+OPENCLAW_VERSION="${OPENCLAW_VERSION:-0.8.1}"
+SDK_VERSION="${SDK_VERSION:-0.4.0}"
+PROTON_JS_VERSION="${PROTON_JS_VERSION:-30.1.0}"
+PROTON_CLI_VERSION="${PROTON_CLI_VERSION:-0.1.99}"
 
 # ─── Helpers ────────────────────────────────────────────────────────────
 say() { printf "\n\033[1;36m▶ %s\033[0m\n" "$*"; }
@@ -37,16 +43,16 @@ say "Step 1 — Install xpr-agents plugin + SDK + @proton/js"
 
 if [ -f package.json ]; then
   npm install \
-    @xpr-agents/openclaw \
-    @xpr-agents/sdk \
-    @proton/js
+    "@xpr-agents/openclaw@$OPENCLAW_VERSION" \
+    "@xpr-agents/sdk@$SDK_VERSION" \
+    "@proton/js@$PROTON_JS_VERSION"
 else
   warn "no package.json in cwd; initialising one"
   npm init -y >/dev/null
   npm install \
-    @xpr-agents/openclaw \
-    @xpr-agents/sdk \
-    @proton/js
+    "@xpr-agents/openclaw@$OPENCLAW_VERSION" \
+    "@xpr-agents/sdk@$SDK_VERSION" \
+    "@proton/js@$PROTON_JS_VERSION"
 fi
 
 INSTALLED_OPENCLAW=$(node -e "console.log(require('@xpr-agents/openclaw/package.json').version)")
@@ -121,7 +127,7 @@ KEYCHAIN_STATUS="not provisioned (see manual steps printed above)"
 
 if ! command -v proton >/dev/null 2>&1; then
   say "Step 2 — Installing @proton/cli"
-  npm install -g @proton/cli
+  npm install -g "@proton/cli@$PROTON_CLI_VERSION"
 fi
 
 # After a global install, the npm bin directory may not be on PATH yet —
@@ -176,10 +182,12 @@ if [ -n "${XPR_PRIVATE_KEY:-}" ]; then
   # echo "no" answers the post-add "encrypt your stored keys?" prompt.
   # The key lands in the CLI's keychain on disk; we accept that tradeoff
   # because the alternative (key in agent process memory) is worse.
+  # Run key:lock afterwards on any long-lived host: the key sits plaintext in
+  # proton-cli.json until the store is locked.
   if echo "no" | proton key:add "$XPR_PRIVATE_KEY" >/dev/null 2>&1; then
     ok "key added to proton CLI keychain"
-    unset XPR_PRIVATE_KEY  # clear from this script's env asap
-    KEYCHAIN_STATUS="provisioned via XPR_PRIVATE_KEY (env var cleared)"
+    unset XPR_PRIVATE_KEY  # clears this script's copy only; the container/console secret still exists
+    KEYCHAIN_STATUS="provisioned via XPR_PRIVATE_KEY (remove the secret from the console now; the runner refuses to start while it is set)"
     say "Step 2 verification — proton key:list"
     proton key:list
   else

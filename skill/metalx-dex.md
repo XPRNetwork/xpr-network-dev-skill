@@ -767,7 +767,8 @@ Both paths assume the proton CLI is installed system-wide and your account's key
 
 ```bash
 npm install -g @proton/cli
-proton key:add   # one-time, prompts for the private key, stores it encrypted in the OS keychain
+proton key:add   # one-time, prompts for the private key, stores it in proton-cli.json in the CLI config dir
+proton key:lock <password>   # required on any long-lived host — proton-cli.json is plaintext until this runs
 ```
 
 ### JavaScript
@@ -975,6 +976,9 @@ cd dex-bot
 npm install
 
 # Upstream configuration — key in process memory (NOT recommended for production)
+# `export` persists the key in your shell history and hands it to every child process
+# the shell spawns. Use the proton CLI keychain path instead (see backend-patterns.md
+# -> Security: Key Isolation); if you must do this, run it in a throwaway shell.
 export PROTON_USERNAME=your_username
 export PROTON_PRIVATE_KEY=your_private_key
 

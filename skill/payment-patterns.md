@@ -158,6 +158,17 @@ function generateInvoiceMemo(invoiceId: string, secret: string): string {
 ### Invoice Service
 
 ```typescript
+// One source of truth for contract + precision. XBTC is 8, not 6 — a hardcoded
+// `currency === 'XPR' ? 4 : 6` silently truncates BTC amounts by 100x.
+const SUPPORTED_TOKENS: Record<string, { contract: string; precision: number }> = {
+  XPR:   { contract: 'eosio.token', precision: 4 },
+  XUSDC: { contract: 'xtokens',     precision: 6 },
+  XUSDT: { contract: 'xtokens',     precision: 6 },
+  XBTC:  { contract: 'xtokens',     precision: 8 },
+  XETH:  { contract: 'xtokens',     precision: 8 },
+  XMD:   { contract: 'xmd.token',   precision: 6 }
+};   // full list: resources.md -> Token Contract Registry
+
 class InvoiceService {
   private db: Database;
   private secret: string;
@@ -206,14 +217,15 @@ class InvoiceService {
     const invoice = await this.db.invoices.findOne({ id: invoiceId });
     if (!invoice) throw new Error('Invoice not found');
 
-    const precision = invoice.currency === 'XPR' ? 4 : 6;
-    const amount = invoice.total.toFixed(precision);
+    const token = SUPPORTED_TOKENS[invoice.currency];
+    if (!token) throw new Error(`Unsupported currency: ${invoice.currency}`);
+    const amount = invoice.total.toFixed(token.precision);
 
     return generatePaymentLink({
       recipient: invoice.merchant,
       amount,
       token: invoice.currency,
-      contract: invoice.currency === 'XPR' ? 'eosio.token' : 'xtokens',
+      contract: token.contract,
       memo: invoice.memo
     });
   }
@@ -222,9 +234,11 @@ class InvoiceService {
     from: string;
     to: string;
     quantity: string;
+    contract: string;   // act.account - which token contract emitted this
     memo: string;
     txId: string;
-  }): Promise<Invoice | null> {
+    blockNum: number;
+  }, libNum: number): Promise<Invoice | null> {
     // Find invoice by memo
     const invoice = await this.db.invoices.findOne({
       memo: transfer.memo,
@@ -234,13 +248,38 @@ class InvoiceService {
 
     if (!invoice) return null;
 
+    const token = SUPPORTED_TOKENS[invoice.currency];
+    if (!token) return null;
+
+    // WHY: anyone can deploy a contract that emits `25.0000 XUSDC`. The real
+    // issuer is the action's account, which is not part of the transfer data.
+    if (transfer.contract !== token.contract) {
+      console.warn(`Wrong token contract: ${transfer.contract}`);
+      return null;
+    }
+
     // Parse amount
     const [amountStr, symbol] = transfer.quantity.split(' ');
     const amount = parseFloat(amountStr);
 
-    // Verify amount matches (with small tolerance for rounding)
-    if (Math.abs(amount - invoice.total) > 0.0001) {
+    // WHY: without this, 25 of any symbol settles a 25 XUSDC invoice
+    if (symbol !== invoice.currency) {
+      console.warn(`Currency mismatch: expected ${invoice.currency}, got ${symbol}`);
+      return null;
+    }
+
+    // Verify amount matches (tolerance = half a unit at the token's precision)
+    const tolerance = Math.pow(10, -token.precision) / 2;
+    if (Math.abs(amount - invoice.total) > tolerance) {
       console.warn(`Amount mismatch: expected ${invoice.total}, got ${amount}`);
+      return null;
+    }
+
+    // WHY: a head block can still be forked away. XPR Network reaches LIB in
+    // ~3 min. Do not release goods on a reversible payment; leave the invoice
+    // pending and the next poll will re-match it once it is final.
+    if (transfer.blockNum > libNum) {
+      console.log(`Payment for ${invoice.id} seen at ${transfer.blockNum}, LIB ${libNum} - waiting`);
       return null;
     }
 
@@ -261,15 +300,20 @@ class InvoiceService {
 ```typescript
 class PaymentWatcher {
   private invoiceService: InvoiceService;
+  private merchantAccount: string;   // was never assigned - the filter below never matched
   private poller: ActionPoller;
 
   constructor(invoiceService: InvoiceService, merchantAccount: string) {
     this.invoiceService = invoiceService;
+    this.merchantAccount = merchantAccount;
     this.poller = new ActionPoller(merchantAccount, 'eosio.token:transfer', 3000);
   }
 
   start(onPayment: (invoice: Invoice) => void): void {
     this.poller.start(async (actions) => {
+      // Finality gate for this batch - see matchPayment
+      const { last_irreversible_block_num: libNum } = await rpc.get_info();
+
       for (const action of actions) {
         // Only process incoming transfers
         if (action.act.data.to !== this.merchantAccount) continue;
@@ -278,9 +322,11 @@ class PaymentWatcher {
           from: action.act.data.from,
           to: action.act.data.to,
           quantity: action.act.data.quantity,
+          contract: action.act.account,
           memo: action.act.data.memo,
-          txId: action.trx_id
-        });
+          txId: action.trx_id,
+          blockNum: action.block_num
+        }, libNum);
 
         if (invoice) {
           onPayment(invoice);
@@ -321,13 +367,13 @@ function POSTerminal({ merchant, onPaymentReceived }: POSProps) {
 
   const generateQR = async () => {
     const invoiceMemo = memo || `POS-${Date.now()}`;
-    const precision = currency === 'XPR' ? 4 : 6;
+    const token = SUPPORTED_TOKENS[currency];   // never hardcode precision: XBTC is 8
 
     const link = generatePaymentLink({
       recipient: merchant,
-      amount: parseFloat(amount).toFixed(precision),
+      amount: parseFloat(amount).toFixed(token.precision),
       token: currency,
-      contract: currency === 'XPR' ? 'eosio.token' : 'xtokens',
+      contract: token.contract,
       memo: invoiceMemo
     });
 
@@ -382,12 +428,22 @@ XPR Network doesn't have native recurring payments, but you can implement them w
 
 ### Subscription Contract
 
+**There is no pull payment on XPR Network.** A contract cannot debit an account it
+does not control, and the only way to give it that power is to add
+`{actor: thatcontract, permission: "eosio.code"}` to your own `active` authority —
+which hands it every token you hold, forever, for every action, not just this one.
+**Never grant a third-party contract `active` authority.** Subscriptions are
+pre-funded instead: the subscriber deposits, the contract debits its own escrow.
+
 ```typescript
 import {
-  Contract, Table, TableStore, Name, Asset,
-  InlineAction, PermissionLevel, check, requireAuth,
-  currentTimeSec
+  Contract, Table, TableStore, Name, Asset, Symbol,
+  check, requireAuth, currentTimeSec
 } from 'proton-tsc';
+import { sendTransferToken } from 'proton-tsc/token';
+
+const TOKEN_CONTRACT = Name.fromString("eosio.token");
+const XPR = new Symbol("XPR", 4);
 
 @table("subscriptions")
 class Subscription extends Table {
@@ -397,6 +453,7 @@ class Subscription extends Table {
     public merchant: Name = new Name(),
     public amount: u64 = 0,
     public symbol: string = "",
+    public balance: u64 = 0,       // pre-funded escrow held by this contract
     public interval: u64 = 0,      // seconds between charges
     public lastCharged: u64 = 0,
     public nextCharge: u64 = 0,
@@ -428,7 +485,9 @@ class SubscriptionManager extends Contract {
     requireAuth(subscriber);
 
     const now = currentTimeSec();
-    const interval = intervalDays * 86400;
+    check(intervalDays > 0 && intervalDays <= 3650, "Interval out of range");
+    // WHY the cast: u32 * 86400 wraps; widen before multiplying, not after
+    const interval: u64 = <u64>intervalDays * 86400;
 
     const sub = new Subscription(
       this.subsTable.availablePrimaryKey,
@@ -436,6 +495,7 @@ class SubscriptionManager extends Contract {
       merchant,
       amount.amount,
       amount.symbol.toString(),
+      0,                            // balance - funded by a separate transfer
       interval,
       now,
       now + interval,
@@ -443,6 +503,28 @@ class SubscriptionManager extends Contract {
     );
 
     this.subsTable.store(sub, subscriber);
+  }
+
+  // Subscriber pre-funds: transfer with memo "fund:<subscriptionId>"
+  @action("transfer", notify)
+  onDeposit(from: Name, to: Name, quantity: Asset, memo: string): void {
+    // WHY: `notify` fires for any token contract naming us - a fake `4,XPR`
+    // would otherwise credit real escrow.
+    if (this.firstReceiver != TOKEN_CONTRACT) return;
+    if (to != this.receiver || from == this.receiver) return;
+    if (!memo.startsWith("fund:")) return;
+
+    check(quantity.symbol == XPR, "Only XPR accepted");
+    check(quantity.amount > 0, "Deposit must be positive");
+
+    const subId = <u64>U64.parseInt(memo.slice(5));
+    const sub = this.subsTable.requireGet(subId, "Subscription not found");
+    check(sub.subscriber == from, "Not your subscription");
+    check(sub.symbol == quantity.symbol.toString(), "Wrong token for this subscription");
+
+    // Credit from `quantity` - the received amount, never an argument
+    sub.balance += <u64>quantity.amount;
+    this.subsTable.update(sub, this.receiver);
   }
 
   // User cancels subscription
@@ -454,24 +536,39 @@ class SubscriptionManager extends Contract {
     check(sub.subscriber == subscriber, "Not your subscription");
 
     sub.active = false;
+    const refund = sub.balance;
+    sub.balance = 0;
     this.subsTable.update(sub, subscriber);
+
+    // Unspent escrow goes straight back - it was never the merchant's
+    if (refund > 0) {
+      sendTransferToken(TOKEN_CONTRACT, this.receiver, subscriber,
+        new Asset(<i64>refund, XPR), "Subscription refund");
+    }
   }
 
-  // Merchant or bot charges due subscriptions
+  // Merchant charges a due subscription out of its escrow
   @action("charge")
   charge(subscriptionId: u64): void {
     const sub = this.subsTable.requireGet(subscriptionId, "Subscription not found");
     check(sub.active, "Subscription not active");
 
-    const now = currentTimeSec();
+    // WHY: without this anyone can call charge repeatedly and walk nextCharge
+    // forward, skipping billing periods the merchant is owed.
+    requireAuth(sub.merchant);
+
+    const now = <u64>currentTimeSec();
     check(now >= sub.nextCharge, "Not yet due");
+    check(sub.balance >= sub.amount, "Insufficient prefunded balance");
 
-    // Transfer from subscriber to merchant
-    // Note: Subscriber must have granted permission to this contract
-
+    // Debit escrow this contract already holds - no authority over the subscriber
+    sub.balance -= sub.amount;
     sub.lastCharged = now;
     sub.nextCharge = now + sub.interval;
     this.subsTable.update(sub, this.receiver);
+
+    sendTransferToken(TOKEN_CONTRACT, this.receiver, sub.merchant,
+      new Asset(<i64>sub.amount, XPR), "Subscription charge");
   }
 
   // Bot calls this to process all due subscriptions
@@ -516,13 +613,17 @@ class SubscriptionBot {
 
       for (const sub of rows) {
         if (!sub.active) continue;
+        if (Number(sub.balance) < Number(sub.amount)) continue;  // unfunded — nothing to pull
 
+        // `charge` requires the merchant's auth, so the bot key must be a limited
+        // permission on the merchant account, linked to subsmanager::charge only.
+        // See accounts-permissions.md "Use Permission Linking".
         // Sign via proton CLI keychain — see backend-patterns.md for createCliSession setup
         await session.link.transact({
           actions: [{
             account: 'subsmanager',
             name: 'charge',
-            authorization: [{ actor: 'subsbot', permission: 'active' }],
+            authorization: [{ actor: sub.merchant, permission: 'billing' }],
             data: { subscriptionId: sub.id }
           }]
         });
@@ -680,14 +781,10 @@ app.post('/webhooks/payment', async (req, res) => {
 
 ### Multi-Currency Support
 
-```typescript
-const SUPPORTED_TOKENS = {
-  XPR: { contract: 'eosio.token', precision: 4 },
-  XUSDC: { contract: 'xtokens', precision: 6 },
-  XUSDT: { contract: 'xtokens', precision: 6 },
-  XBTC: { contract: 'xtokens', precision: 8 }
-};
+Reuses the `SUPPORTED_TOKENS` table from the Invoice Service above — one map, one
+place to get precision wrong.
 
+```typescript
 async function createMultiCurrencyInvoice(
   merchant: string,
   amountUSD: number
@@ -696,6 +793,11 @@ async function createMultiCurrencyInvoice(
 
   // Get current prices
   const xprPrice = await getOraclePrice(3);   // feed 3 = XPR/USD (there is no feed 1)
+  // WHY: a missing or mis-typed variant reads back 0 (or NaN). Dividing by it
+  // mints an Infinity payment amount. Check freshness too - see oracles-randomness.md.
+  if (!Number.isFinite(xprPrice) || xprPrice <= 0) {
+    throw new Error('Oracle returned no usable XPR price');
+  }
 
   for (const [symbol, config] of Object.entries(SUPPORTED_TOKENS)) {
     let amount: number;

@@ -89,10 +89,12 @@ const xprPrice = await getOraclePrice(3);   // XPR/USD
 ### Use Oracle in Smart Contract
 
 ```typescript
-import { Contract, TableStore, check } from 'proton-tsc';
+import { Contract, TableStore, check, currentTimeSec } from 'proton-tsc';
 // proton-tsc ships the oracle table classes: Data { feed_index, aggregate: DataVariant, points: ProviderPoint[] }.
 // `aggregate` is a variant (d_string | d_uint64_t | d_double) — a plain f64 field would mis-deserialize.
 import { Data, ORACLES_CONTRACT } from 'proton-tsc/oracles';
+
+const MAX_PRICE_AGE_SEC: u32 = 900;  // tune per feed; index 2 (XPR/BTC) is a 14-day average
 
 @contract
 class MyContract extends Contract {
@@ -103,8 +105,21 @@ class MyContract extends Contract {
     const oracleTable = new TableStore<Data>(ORACLES_CONTRACT, ORACLES_CONTRACT);
 
     const data = oracleTable.requireGet(feedIndex, "Oracle feed not found");
+
+    // WHY: a `data` row is never removed, so a dead feed still reads fine and
+    // returns a year-old price. Freshness = newest provider submission;
+    // the row has no top-level timestamp.
+    let newest: u32 = 0;
+    for (let i = 0; i < data.points.length; i++) {
+      const t = data.points[i].time.secSinceEpoch();
+      if (t > newest) newest = t;
+    }
+    check(newest > 0, "Oracle feed has no submissions");
+    check(currentTimeSec() - newest <= MAX_PRICE_AGE_SEC, "Oracle price is stale");
+
     const price = <u64>(data.aggregate.f64Value * 10000); // f64Value asserts the variant holds a double
 
+    check(price > 0, "Oracle price is zero");
     check(price >= minPrice, "Price below minimum");
   }
 }
@@ -173,20 +188,11 @@ This ensures randomness cannot be predicted or manipulated.
 
 Your contract calls `requestrand` on the `rng` contract:
 
-```typescript
-import {
-  Contract, Name, InlineAction, PermissionLevel,
-  ActionData, check, requireAuth
-} from 'proton-tsc';
+Use the helper `proton-tsc` ships — don't hand-roll the `@packer`/`InlineAction` pair:
 
-@packer
-class RequestRandParams extends ActionData {
-  constructor(
-    public assoc_id: u64 = 0,
-    public signing_value: u64 = 0,
-    public caller: Name = new Name()
-  ) { super(); }
-}
+```typescript
+import { Contract, Name, check, requireAuth, currentTimeSec } from 'proton-tsc';
+import { sendRequestRandom } from 'proton-tsc/rng';
 
 @contract
 class MyGame extends Contract {
@@ -195,22 +201,17 @@ class MyGame extends Contract {
   startGame(player: Name, gameId: u64): void {
     requireAuth(player);
 
-    // Generate unique signing value (must be unique per request)
+    // signing_value must be unique per request — `rng` rejects a value it has seen
     const signingValue = this.generateSigningValue(gameId, player);
 
-    // Request random number from oracle
-    const requestAction = new InlineAction<RequestRandParams>("requestrand")
-      .act(Name.fromString("rng"), new PermissionLevel(this.receiver))
-      .send(new RequestRandParams(
-        gameId,           // assoc_id - returned in callback
-        signingValue,     // signing_value - must be unique
-        this.receiver     // caller - your contract
-      ));
+    // sendRequestRandom(contract, customerId, signingValue)
+    // customerId comes back as `assoc_id` in the receiverand callback
+    sendRequestRandom(this.receiver, gameId, signingValue);
   }
 
   private generateSigningValue(gameId: u64, player: Name): u64 {
     // Combine multiple values for uniqueness
-    return gameId ^ player.N ^ currentTimeSec();
+    return gameId ^ player.N ^ <u64>currentTimeSec();
   }
 }
 ```
@@ -221,6 +222,7 @@ Implement the `receiverand` action in your contract:
 
 ```typescript
 import { Name, Checksum256, check, requireAuth } from 'proton-tsc';
+import { RNG_CONTRACT, rngChecksumToU64 } from 'proton-tsc/rng';
 
 @contract
 class MyGame extends Contract {
@@ -229,39 +231,33 @@ class MyGame extends Contract {
   @action("receiverand")
   receiveRand(assoc_id: u64, random_value: Checksum256): void {
     // Only RNG contract can call this
-    requireAuth(Name.fromString("rng"));
+    requireAuth(RNG_CONTRACT);
 
-    // assoc_id is the gameId we passed in requestrand
+    // assoc_id is the customerId we passed to sendRequestRandom
     const gameId = assoc_id;
 
-    // random_value is a SHA256 hash - use it for randomness
-    const randomBytes = random_value.data;
-
-    // Convert to usable random number
-    const randomNumber = this.bytesToU64(randomBytes);
+    // rngChecksumToU64(checksum, maxValue) folds the first 8 bytes and takes a modulus
+    const roll = rngChecksumToU64(random_value, 100);  // 0..99
 
     // Use the random number in your game logic
-    this.resolveGame(gameId, randomNumber);
+    this.resolveGame(gameId, roll);
   }
 
-  private bytesToU64(bytes: u8[]): u64 {
-    let result: u64 = 0;
-    for (let i = 0; i < 8 && i < bytes.length; i++) {
-      result = (result << 8) | <u64>bytes[i];
-    }
-    return result;
-  }
-
-  private resolveGame(gameId: u64, randomNumber: u64): void {
+  private resolveGame(gameId: u64, roll: u64): void {
     // Your game resolution logic
     // e.g., pick winner, determine outcome, etc.
   }
 }
 ```
 
+`random_value` is 32 bytes; `rngChecksumToU64` only consumes the first 8. For several
+independent draws, slice different byte ranges yourself (see the slot machine below).
+
 #### 3. Enable Inline Actions
 
-Your contract needs `eosio.code` permission to receive callbacks:
+`eosio.code` is what lets your contract **send** the `requestrand` inline action — it is
+not needed to receive the callback (`rng` calls `receiverand` under its own authority).
+You need it anyway, plus for any payout transfer you send:
 
 ```bash
 proton contract:enableinline mycontract
@@ -269,91 +265,89 @@ proton contract:enableinline mycontract
 
 ### Complete Example: Coin Flip Game
 
+The bet **is** the transfer. There is no `flip` action taking a `bet` argument — an
+action argument is a claim, a transfer notification is a fact.
+
 ```typescript
 import {
-  Contract, Table, TableStore, Name, Asset,
-  InlineAction, PermissionLevel, ActionData,
+  Contract, Table, TableStore, Name, Asset, Symbol,
   check, requireAuth, currentTimeSec, Checksum256
 } from 'proton-tsc';
+import { sendTransferToken } from 'proton-tsc/token';
+import { RNG_CONTRACT, sendRequestRandom } from 'proton-tsc/rng';
 
-// Game state
+const TOKEN_CONTRACT = Name.fromString("eosio.token");
+const XPR = new Symbol("XPR", 4);
+
+// Pending flip
 @table("games")
 class Game extends Table {
   constructor(
     public id: u64 = 0,
     public player: Name = new Name(),
     public bet: u64 = 0,
-    public choice: u8 = 0,  // 0 = heads, 1 = tails
-    public status: u8 = 0,  // 0 = pending, 1 = resolved
-    public won: boolean = false
+    public choice: u8 = 0   // 0 = heads, 1 = tails
   ) { super(); }
 
   @primary
   get primary(): u64 { return this.id; }
-}
 
-@packer
-class RequestRandParams extends ActionData {
-  constructor(
-    public assoc_id: u64 = 0,
-    public signing_value: u64 = 0,
-    public caller: Name = new Name()
-  ) { super(); }
+  @secondary
+  get byPlayer(): u64 { return this.player.N; }
 }
 
 @contract
 class CoinFlip extends Contract {
   gamesTable: TableStore<Game> = new TableStore<Game>(this.receiver);
 
-  @action("flip")
-  flip(player: Name, choice: u8, bet: Asset): void {
-    requireAuth(player);
-    check(choice == 0 || choice == 1, "Choice must be 0 (heads) or 1 (tails)");
-    check(bet.amount > 0, "Bet must be positive");
+  @action("transfer", notify)
+  onTransfer(from: Name, to: Name, quantity: Asset, memo: string): void {
+    // WHY: any account can deploy a token contract that emits a transfer with
+    // symbol `4,XPR`. Without firstReceiver the house pays real XPR for fake chips.
+    if (this.firstReceiver != TOKEN_CONTRACT) return;
+    if (to != this.receiver || from == this.receiver) return;
+    if (memo != "heads" && memo != "tails") return;
 
-    // Create game
+    check(quantity.symbol == XPR, "Only XPR accepted");
+    // Cap the stake so the house can always cover 2x
+    check(quantity.amount >= 10000, "Minimum bet: 1 XPR");
+    check(quantity.amount <= 10000000, "Maximum bet: 1000 XPR");
+
+    // One pending flip per player — secondary index, not a table scan
+    check(this.gamesTable.getBySecondaryU64(from.N, 0) == null, "Pending flip exists");
+
+    const choice: u8 = memo == "heads" ? 0 : 1;
     const gameId = this.gamesTable.availablePrimaryKey;
-    const game = new Game(gameId, player, bet.amount, choice, 0, false);
-    this.gamesTable.store(game, player);
+    // Bet comes from `quantity`, never from a caller-supplied argument
+    const game = new Game(gameId, from, <u64>quantity.amount, choice);
+    this.gamesTable.store(game, this.receiver);  // contract pays RAM
 
-    // Transfer bet to contract
-    // (would need inline action to eosio.token::transfer)
-
-    // Request random number
-    const signingValue = gameId ^ player.N ^ currentTimeSec();
-
-    new InlineAction<RequestRandParams>("requestrand")
-      .act(Name.fromString("rng"), new PermissionLevel(this.receiver))
-      .send(new RequestRandParams(gameId, signingValue, this.receiver));
+    const signingValue = gameId ^ from.N ^ <u64>currentTimeSec();
+    sendRequestRandom(this.receiver, gameId, signingValue);
   }
 
   @action("receiverand")
   receiveRand(assoc_id: u64, random_value: Checksum256): void {
-    requireAuth(Name.fromString("rng"));
+    requireAuth(RNG_CONTRACT);
 
     const game = this.gamesTable.requireGet(assoc_id, "Game not found");
-    check(game.status == 0, "Game already resolved");
 
-    // Determine outcome (0 or 1 based on random)
-    const randomByte = random_value.data[0];
-    const outcome: u8 = randomByte % 2 == 0 ? 0 : 1;
-
-    // Check if player won
+    const outcome: u8 = <u8>(random_value.data[0] % 2);
     const won = outcome == game.choice;
 
-    // Update game
-    game.status = 1;
-    game.won = won;
-    this.gamesTable.update(game, this.receiver);
+    // Remove first: settles the row and frees the player's pending slot
+    this.gamesTable.remove(game);
 
-    // Pay winner (2x bet minus fee)
     if (won) {
       const payout = game.bet * 2 * 95 / 100;  // 5% house edge
-      // Send payout via inline action
+      sendTransferToken(TOKEN_CONTRACT, this.receiver, game.player,
+        new Asset(<i64>payout, XPR), "Coin flip win");
     }
   }
 }
 ```
+
+A losing flip keeps the stake because it already arrived. Nothing needs collecting.
 
 ### Real-World Example: Slot Machine
 
@@ -362,10 +356,13 @@ This example demonstrates a more complex RNG use case with weighted symbol selec
 ```typescript
 import {
   Contract, Table, TableStore, Name, Asset,
-  InlineAction, PermissionLevel, ActionData,
   check, requireAuth, currentTimeSec, Checksum256, Symbol
 } from 'proton-tsc';
 import { sendTransferToken } from 'proton-tsc/token';
+import { RNG_CONTRACT, sendRequestRandom } from 'proton-tsc/rng';
+
+const TOKEN_CONTRACT = Name.fromString("eosio.token");
+const XPR = new Symbol("XPR", 4);
 
 // Pending game tracking
 @table("games")
@@ -379,6 +376,9 @@ class Game extends Table {
 
   @primary
   get primary(): u64 { return this.id; }
+
+  @secondary
+  get byPlayer(): u64 { return this.player.N; }
 }
 
 // Spin results (historical record)
@@ -413,40 +413,35 @@ class SlotMachine extends Contract {
   // Handle incoming transfer (player sends XPR to play)
   @action("transfer", notify)
   onTransfer(from: Name, to: Name, quantity: Asset, memo: string): void {
+    // WHY: `notify` fires for ANY token contract that names us. Without this the
+    // house pays real XPR out for a worthless token minted to look like `4,XPR`.
+    if (this.firstReceiver != TOKEN_CONTRACT) return;
     if (to != this.receiver || from == this.receiver) return;
     if (memo != "spin") return;
 
+    check(quantity.symbol == XPR, "Only XPR accepted");
     check(quantity.amount >= 10000, "Minimum bet: 1 XPR");
     check(quantity.amount <= 10000000, "Maximum bet: 1000 XPR");
 
-    // Check no pending game for this player
-    // (prevents double-spin exploit)
-    let hasPending = false;
-    let cursor = this.gamesTable.first();
-    while (cursor) {
-      if (cursor.player == from) {
-        hasPending = true;
-        break;
-      }
-      cursor = this.gamesTable.next(cursor);
-    }
-    check(!hasPending, "Pending spin exists - please wait");
+    // Check no pending game for this player (prevents double-spin exploit).
+    // WHY secondary index: a full scan is O(table) CPU per transfer — anyone can
+    // grow the table and then every spin blows the CPU limit.
+    check(this.gamesTable.getBySecondaryU64(from.N, 0) == null,
+      "Pending spin exists - please wait");
 
-    // Create pending game
+    // Create pending game — stake comes from `quantity`, never from an argument
     const gameId = this.gamesTable.availablePrimaryKey;
-    const game = new Game(gameId, from, quantity.amount, currentTimeSec());
+    const game = new Game(gameId, from, <u64>quantity.amount, currentTimeSec());
     this.gamesTable.store(game, this.receiver);
 
     // Request random from oracle
-    const signingValue = gameId ^ from.N ^ currentTimeSec();
-    new InlineAction<RequestRandParams>("requestrand")
-      .act(Name.fromString("rng"), new PermissionLevel(this.receiver))
-      .send(new RequestRandParams(gameId, signingValue, this.receiver));
+    const signingValue = gameId ^ from.N ^ <u64>currentTimeSec();
+    sendRequestRandom(this.receiver, gameId, signingValue);
   }
 
   @action("receiverand")
   receiveRand(assoc_id: u64, random_value: Checksum256): void {
-    requireAuth(Name.fromString("rng"));
+    requireAuth(RNG_CONTRACT);
 
     const game = this.gamesTable.requireGet(assoc_id, "Game not found");
 
@@ -478,8 +473,8 @@ class SlotMachine extends Contract {
 
     // Pay winner
     if (payout > 0) {
-      sendTransferToken(Name.fromString("eosio.token"), this.receiver, game.player,
-        new Asset(payout, new Symbol("XPR", 4)), "Slot win!");
+      sendTransferToken(TOKEN_CONTRACT, this.receiver, game.player,
+        new Asset(<i64>payout, XPR), "Slot win!");
     }
   }
 
@@ -501,7 +496,7 @@ class SlotMachine extends Contract {
   private calculatePayout(r1: u8, r2: u8, r3: u8, bet: u64): u64 {
     // Three of a kind
     if (r1 == r2 && r2 == r3) {
-      if (r1 == 4) return this.getJackpotPayout();  // 7-7-7 Jackpot
+      if (r1 == 4) return this.getJackpotPayout(bet); // 7-7-7 Jackpot
       if (r1 == 1) return bet * 5;                   // Cherry 5x
       if (r1 == 3) return bet * 3;                   // Bar 3x
       if (r1 == 2) return bet * 2;                   // Bell 2x
@@ -522,9 +517,12 @@ class SlotMachine extends Contract {
     return result;
   }
 
-  private getJackpotPayout(): u64 {
-    // Return jackpot pool amount (implementation depends on your design)
-    return 100000000; // 10,000 XPR minimum
+  private getJackpotPayout(bet: u64): u64 {
+    // WHY a multiple of the wager, not a fixed pool: a flat 10,000 XPR jackpot on a
+    // 1 XPR minimum bet is EV ~5.5x stake — min-bet spam drains the contract.
+    // Every payout here is a multiple of `bet`, so the house edge holds at any stake.
+    // Bound your bankroll accordingly: max bet 1000 XPR x 50 = 50,000 XPR exposure.
+    return bet * 50;
   }
 }
 ```
@@ -534,7 +532,7 @@ class SlotMachine extends Contract {
 1. **Pending game tracking**: Prevent players from spamming spins while one is pending
 2. **Multiple random values**: Extract independent values from different portions of the 32-byte hash
 3. **Weighted randomness**: Use cumulative weights for non-uniform probability distributions
-4. **Transfer notification**: Trigger game logic on incoming token transfer with memo
+4. **Transfer notification**: Trigger game logic on incoming token transfer with memo — always gate on `this.firstReceiver` and the symbol before trusting `quantity`
 5. **Historical records**: Store spin results for transparency/verification
 
 ---
