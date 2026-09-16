@@ -1,6 +1,6 @@
 # XPR Network Hyperion — Operations & Caveats (hard-won)
 
-Field notes from the protonnz full-history build (July 2026), including several multi-day incidents. Sections are numbered in the order discovered — §0 was found last and explains much of what §5.5 originally attributed to chain density. Everything here was hit in practice or confirmed by other XPR Network operators and the Hyperion maintainers. Read this before sizing hardware or debugging a stalled indexer. Setup steps live in [`hyperion-setup.md`](hyperion-setup.md).
+Field notes from a production full-history build on XPR mainnet (July 2026), including several multi-day incidents. Sections are numbered in the order discovered — §0 was found last and explains much of what §5.5 originally attributed to chain density. Everything here was hit in practice or confirmed by other XPR Network operators and the Hyperion maintainers. Read this before sizing hardware or debugging a stalled indexer. Setup steps live in [`hyperion-setup.md`](hyperion-setup.md).
 
 Every CLI subcommand and config key named below was checked against the upstream `eosrio/hyperion-history-api` source (4.1.0, September 2026).
 
@@ -48,7 +48,7 @@ Do **NOT** measure the ES disk-fill rate during the **December 2023 Metal X DEX 
 
 **Cause:** Redis periodic RDB background-save (`save 3600 1 …`) writes a `temp-NNNNNN.rdb`, then renames to `dump.rdb`. If a save is **interrupted** (disk full, OOM, process churn, restarts), the temp file is **orphaned**. Under disk pressure + repeated restarts these **cascade** — we accumulated **35 files / 425GB** of junk in one bad afternoon (8.9G, 9.4G, 23G, 20G… each a failed save).
 
-**This was a major contributor to our "disk full at block 230M" incident** — ES was only ~1TB there; 425GB of Redis garbage pushed the drive to 92%.
+**This was a major contributor to a "disk full at block 230M" incident on one production node** — ES was only ~1TB there; 425GB of Redis garbage pushed the drive to 92%.
 
 **Fix (safe only for STALE temp files — a live BGSAVE is writing one right now):**
 ```bash
@@ -89,7 +89,7 @@ df -h /                                                   # ES drive % — near 
 curl -s -u elastic:$P localhost:9200/_cluster/health      # status: red? unassigned_shards>0?
 curl -s -u elastic:$P 'localhost:9200/_cat/indices/proton-action-*?v&s=index' | tail  # a RED partition?
 ```
-We wasted hours chasing a "deserializer stall" that was purely disk. Experienced operators warn about this directly: once the ES data drive hits ~90% it flips read-only and causes a lot of pain.
+Hours were lost on that node chasing a "deserializer stall" that was purely disk. Experienced operators warn about this directly: once the ES data drive hits ~90% it flips read-only and causes a lot of pain.
 
 **Recovery:** free space (see §2), delete the empty RED partition indices to get the cluster green, then resume. Check emptiness first — `GET /proton-action-v1-0000NN/_count` must return `0` — and **confirm with the operator before deleting**; an agent never runs this unattended:
 
@@ -104,7 +104,7 @@ DELETE /proton-action-v1-0000NN         # only after operator confirmation
 
 **Rule (every experienced operator repeats it):** don't restart the indexer with docs in the queues or you will be missing data. Purging RabbitMQ queues or restarting while the ds_pool/index queues hold documents **drops those actions/deltas** — leaving **silent gaps** that pass a "range completed" check but fail on `get_actions`.
 
-We purged all `proton:*` queues and restarted repeatedly during the 230M disk incident → **small action gaps around block ~230M** (later confirmed and repaired, §11).
+Purging all `proton:*` queues and restarting repeatedly during the 230M disk incident led to **small action gaps around block ~230M** (later confirmed and repaired, §11).
 
 **Correct resume:** just `pm2 start proton-indexer` — the queued docs get *processed*, not lost. Only **purge** if you know the queues are empty.
 
@@ -172,9 +172,9 @@ A plain `pm2 restart` does NOT reliably work: RabbitMQ doesn't notice the old co
 
 ---
 
-## 8. Hardware sourcing (Hetzner constraint + funding)
+## 8. Hardware sourcing (fixed-storage hosts + funding)
 
-- **Hetzner standard dedicated models (AX/EX) cannot have drives added after ordering** — storage is fixed at order via the configurator (confirmed with Hetzner support). Size storage at purchase, or use the **Hetzner Server Auction** for storage-heavy boxes.
+- **Many dedicated-host product lines cannot have drives added after ordering** — storage is fixed at order time (confirm with the host's support before buying). Size storage at purchase, or look at the host's auction / refurbished inventory for storage-heavy boxes.
 - **XPR governance funds public Hyperion hardware.** Precedent: a block producer's "Hyperion API Deployment" governance proposal (Jan 2024) requested **$2,400 for hardware** and passed **unanimously (1.09B XPR, 100%)**; the operator bears colocation/power/bandwidth. The network explicitly wants **≥5 healthy public Hyperion APIs**. A one-time hardware grant for a public node is a viable, precedented path.
 
 ---

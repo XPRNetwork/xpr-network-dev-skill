@@ -43,6 +43,10 @@ Security and bug review of the whole skill. Three shell scripts and all 31 modul
 - Redis temp-file cleanup is safe only for stale files; check `rdb_bgsave_in_progress` first. Elasticsearch `DELETE` steps gated on a `_count` check and operator confirmation.
 - Webhook HMAC signs the full `{event, payload, timestamp}` body from an env secret with a freshness window; socket server restricts CORS; SHIP client uses `wss://`.
 
+### Changed — Hyperion guides (`hyperion-setup.md`, `hyperion-operations-caveats.md`)
+
+- Operator attribution, the vendor-specific reference build, and first-person incident narration generalised to "a production full-history build"; sizing numbers, incident details, and the disk-split procedure are unchanged.
+
 ### Fixed — scripts (`scripts/validate-skill.sh`, `scripts/agent-bootstrap.sh`)
 
 - `validate-skill.sh` aborted on its first failed check: under `set -e`, `((ERRORS++))` returns non-zero when the counter is 0. Counters now use `ERRORS=$((ERRORS+1))`. URL check no longer reports codes like `404000`.

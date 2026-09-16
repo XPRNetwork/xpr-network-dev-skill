@@ -1,6 +1,6 @@
 # Hyperion Full-History Setup for XPR Network
 
-Guide for standing up a Hyperion v4 full-history node on XPR mainnet, written from the protonnz full-history build (July 2026), which has been serving mainnet history at head on Hyperion 4.0.8 since (all `/v2/health` services OK as of September 2026). Every caveat here was hit in practice or confirmed by other XPR Network operators.
+Guide for standing up a Hyperion v4 full-history node on XPR mainnet, written from a production full-history build on XPR mainnet (Hyperion 4.0.8, built July 2026) that serves history at head with all `/v2/health` services OK as of September 2026. Every caveat here was hit in practice or confirmed by other XPR Network operators.
 
 > **Read [`hyperion-operations-caveats.md`](hyperion-operations-caveats.md) before your first backfill.** It covers the failure modes that cost days: the composable-template trap, Redis bloat, disk-full stalls, queue purges that silently lose data, and how to prove the index is actually complete.
 
@@ -35,11 +35,11 @@ All components can run on one box for XPR's load. Redis is used for caching/IPC;
 - **Fast NVMe with good 4K random reads is non-negotiable for Elasticsearch** — on slow disk both indexing and query latency collapse. State-history can live on slower disk; ES cannot.
 - 64GB RAM works; 128GB is comfortable. **Never give ES more than ~31GB heap** (compressed-oops threshold; bigger heaps hurt).
 - 8 modern cores suffice for XPR's current load; 16 makes the initial index much faster.
-- Reference build: Hetzner AX102 (7950X3D, 128GB ECC, 2×1.92TB NVMe DC) ≈ $260–300/mo post-June-2026 prices. AX42 is poor value once you pay for drive upgrades (~$48/mo per 1.92TB NVMe addon).
+- Reference build that runs it comfortably: one dedicated server with a current 16-core desktop-class CPU, 128GB ECC RAM, and 2×1.92TB datacenter NVMe, roughly $260–300/mo at mid-2026 dedicated-hosting prices. Entry-level models turn out poor value once per-drive upgrade fees (~$50/mo per 1.92TB NVMe) are added.
 
-### Disk layout caveat (Hetzner dedicated)
+### Disk layout caveat (dedicated hosts with two NVMe drives)
 
-Hetzner's installimage defaults to **RAID1 across both drives** — that halves capacity and full history won't fit in 1.92TB. Split it: keep OS + ES on drive 0, dedicate drive 1 to nodeos data. Breaking the mirror live (no reinstall/rescue needed):
+Most dedicated-host installers default to **RAID1 across both drives** — that halves capacity and full history won't fit in 1.92TB. Split it: keep OS + ES on drive 0, dedicate drive 1 to nodeos data. Breaking the mirror live (no reinstall/rescue needed):
 
 ```bash
 mdadm /dev/md2 --fail /dev/nvme1n1p4          # may need: echo idle > /sys/block/md2/md/sync_action first
