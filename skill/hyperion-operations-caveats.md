@@ -35,7 +35,7 @@ What that does on XPR: DEX actions carry arbitrary keys in `act.data` (`"136|XMD
 - One operator runs full history with every index on a **7.68TB** drive — that's *years* of headroom, not a requirement — and considers 4TB no longer comfortable for a full node.
 - **Replicas double storage.** Run `es_replicas: 0` (single node) — one operator halved their footprint the moment they removed replicas.
 
-### The projection trap that cost us days
+### The projection trap that costs days
 Do **NOT** measure the ES disk-fill rate during the **December 2023 Metal X DEX peak** and extrapolate it. That era runs ~27.6 GB/million blocks — roughly **10× the sustained rate** (dex `process`/`logorder`/`processltp` flood). Extrapolating the peak across the whole remaining chain over-projected action-only to **5.2TB** when the real figure is ~1.4TB. Trust whole-chain operator numbers (~2TB) over a short in-peak measurement.
 
 **Implication:** a 2×1.92TB box (split ES/SHIP) **can hold action-only full history** on its 1.9TB ES drive. Full-with-deltas (~2TB) needs a drive >2TB (4TB or 7.68TB).
@@ -57,7 +57,7 @@ ls -lah /var/lib/redis/temp-*.rdb          # confirm they're stale (old dates)
 rm -f /var/lib/redis/temp-*.rdb            # reclaim
 redis-cli ping                             # confirm still healthy
 ```
-**Part 2 of the Redis saga (it WILL escalate):** during high-speed indexing (~5k blocks/s) Hyperion's Redis usage balloons unbounded — ours hit **84GB RSS and got OOM-killed**, then entered a **systemd restart crashloop** (loading its 40GB dump exceeds the 90s start timeout → killed → retry, 45 attempts). With Redis down, indexer workers wedge with `ioredis ECONNREFUSED` — looks like yet another consumer stall. Operators had warned about exactly this: cap Redis memory, because unbounded Redis stops the queues.
+**Part 2 of the Redis saga (it WILL escalate):** during high-speed indexing (~5k blocks/s) Hyperion's Redis usage balloons unbounded — one production node hit **84GB RSS and got OOM-killed**, then entered a **systemd restart crashloop** (loading its 40GB dump exceeds the 90s start timeout → killed → retry, 45 attempts). With Redis down, indexer workers wedge with `ioredis ECONNREFUSED` — looks like yet another consumer stall. Operators had warned about exactly this: cap Redis memory, because unbounded Redis stops the queues.
 
 **Permanent fix (Hyperion's Redis is rebuildable cache/coordination):**
 ```
