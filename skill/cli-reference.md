@@ -479,3 +479,19 @@ proton ram:buy BUYER RECEIVER BYTES BUYER
 | Query table | `proton table CONTRACT TABLE` |
 | Buy RAM | `proton ram:buy PAYER RECV BYTES -p PAYER@active` |
 | Enable inline | `proton contract:enableinline CONTRACT` |
+
+
+---
+
+## The CLI resolves a contract's ABI BEFORE executing the transaction
+
+`proton transaction:push` serializes every action against the ABI currently on chain. So a single transaction
+cannot both deploy a contract and call one of its new actions:
+
+```
+Unknown action clearall in contract mycontract
+```
+
+Split it: `setcode` + `setabi` in one transaction, the new action in the next. The same applies to `setconfig`
+style bootstrapping — the contract must already be live before its own actions can be serialized, which is also
+why a multisig proposal to call a not-yet-deployed action cannot even be created.

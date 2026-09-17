@@ -569,3 +569,84 @@ owner (highest)
 ```
 
 Child permissions cannot exceed parent's authority.
+
+
+---
+
+## Gotchas that cost real money
+
+These are the ones that do not announce themselves. Each was found the expensive way on mainnet or in a review.
+
+### `eosio.code` weight must EQUAL the permission's threshold
+
+An inline action a contract sends is authorized by exactly one thing: its own `{contract, eosio.code}`.
+Transaction signatures are **not** inherited by inline actions. So on a multisig contract account:
+
+```jsonc
+// WRONG on a 2-of-N account: the contract cannot send a single inline action
+{"threshold": 2, "accounts": [
+  {"permission": {"actor": "alice",      "permission": "active"},    "weight": 1},
+  {"permission": {"actor": "bob",        "permission": "active"},    "weight": 1},
+  {"permission": {"actor": "mycontract", "permission": "eosio.code"},"weight": 1}   // 1 < 2
+]}
+
+// RIGHT: the code alone meets the threshold; people still need two signatures
+{"threshold": 2, "accounts": [
+  {"permission": {"actor": "alice",      "permission": "active"},    "weight": 1},
+  {"permission": {"actor": "bob",        "permission": "active"},    "weight": 1},
+  {"permission": {"actor": "mycontract", "permission": "eosio.code"},"weight": 2}
+]}
+```
+
+Raising the weight does not weaken the multisig: `eosio.code` is not a key anybody holds, it only means "an
+action this account's own code sent". A single-signature account (threshold 1, weight 1) never hits this, which
+is why it usually surfaces only when a contract moves to a multisig.
+
+The failure is silent until the first inline action: `transaction declares authority {acct,active} but does not
+have signatures for it`.
+
+### `linkauth` is FORBIDDEN on the permission-changing actions
+
+You cannot protect an account by linking these to a higher permission:
+
+```
+eosio::updateauth   eosio::deleteauth   eosio::linkauth   eosio::unlinkauth   eosio::canceldelay
+```
+
+The chain refuses: `Cannot link eosio::updateauth to a minimum permission`.
+
+**Consequence:** any key on `active` can rewrite its own account's permissions. If a key signs unattended on a
+server, "leave it on `active` but restrict it" is not an option — the only defence is for the key not to be on
+`active` at all. Put it on a named permission (below).
+
+### A named permission cannot be used until `linkauth` names it
+
+Creating `myacct@build` and signing with it is not enough. The minimum permission for any action where your
+account is the actor is `active`, and a child does not satisfy its parent:
+
+```
+action declares irrelevant authority '{"actor":"myacct","permission":"build"}';
+minimum authority is {"actor":"myacct","permission":"active"}
+```
+
+So a named permission needs an explicit link per `(code, action)`:
+
+```bash
+proton action eosio linkauth '{"account":"myacct","code":"thecontract","type":"theaction","requirement":"build"}' myacct@active
+```
+
+This cuts both ways, and the second half is the useful part:
+
+- **Cost:** you need one `linkauth` per contract action the key may call. If the target contract is different for
+  every use (e.g. one per user account), that is one signature per user — usually too expensive to be practical.
+- **Benefit:** a key on a linked named permission can do *only* the linked actions. Anything else requires
+  `active`, which it is not — including `updateauth` on its own account. That is the whole point.
+
+Another account's authority may still name the permission directly (`{actor: myacct, permission: build}` inside
+someone else's `active`), and that needs no link, because there your account is not the actor.
+
+### Changing an authority to the same value is an error
+
+`updateauth`/`linkauth` with a requirement identical to the current one fails with
+`Attempting to update required authority, but new requirement is same as old`. Batch migrations must skip the
+parts already applied, or split them, or a partially-applied migration cannot be re-run.

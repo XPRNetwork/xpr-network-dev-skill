@@ -1226,3 +1226,39 @@ async function queryWithFallback(query: (rpc: JsonRpc) => Promise<any>) {
   throw new Error('All endpoints failed');
 }
 ```
+
+
+---
+
+## RAM is NOT priced by the `rammarket` bancor curve on XPR Network
+
+Most EOSIO documentation (and most LLM training data) computes RAM cost from the `eosio::rammarket` table with
+the bancor formula. **On XPR Network that table exists and is wrong.** RAM has a fixed price per byte plus a fee,
+in `eosio::globalram`:
+
+```bash
+curl -s https://api.protonnz.com/v1/chain/get_table_rows -d '{
+  "json": true, "code": "eosio", "scope": "eosio", "table": "globalram", "limit": 1
+}'
+# {"ram_price_per_byte": "0.0020 XPR", "max_per_user_bytes": 6291456, "ram_fee_percent": 1000, ...}
+```
+
+The fee is taken **out of** the amount paid, so the cost of `bytes` is:
+
+```js
+cost = bytes * price_per_byte / (1 - ram_fee_percent / 10000)
+// 420,000 bytes = 420000 * 0.0020 / 0.9 = 933.3 XPR
+```
+
+Using the bancor formula for the same 420,000 bytes gives ~171 XPR — **five times too low**. Verify against a
+real purchase before relying on any number: buying 1,000 bytes cost exactly 2.2221 XPR, which matches
+`/(1 - fee)` and not `*(1 + fee)`.
+
+`proton-tsc` gets this right in `system/modules/ram.ts` (`estimateBuyRamCost`), and exposes the table as
+`GlobalRam` — read it from chain rather than hardcoding, because the price can change.
+
+### `setcode` bills about TEN TIMES the wasm size
+
+Budget RAM for a contract account accordingly: a 28 KB contract consumed ~285 KB of RAM on deploy. Buying "a bit
+more than the wasm" leaves an account that cannot be deployed to, and the error only appears at `setcode`:
+`account X has insufficient ram; needs N bytes has M bytes`.
