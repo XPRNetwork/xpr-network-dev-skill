@@ -746,3 +746,32 @@ you or not valid, either return or send the money back inline.
 `{"orderId": 0}` in the transaction, not `order_id`. Table fields, by contrast, are the class property names and
 usually snake_case. Read `target/<name>.contract.abi` rather than guessing; the error is
 `missing <action>.<field> (type=...)`.
+
+
+### Deleting the rows does NOT un-stick a table whose layout changed
+
+The worst version of the layout problem is the one that looks fixed. After deleting every row:
+
+```
+get_table_rows  ->  {"rows": []}     for the table AND for every secondary index
+next insert     ->  could not insert object, most likely a uniqueness constraint was violated
+```
+
+The cause is **orphaned secondary index entries**. Removing a row cleans up only the indexes the *current*
+struct declares; entries written under an index that an earlier version declared stay behind. They are
+invisible, because a query on a secondary index resolves each entry to its primary row, finds none, and returns
+an empty list. And they are fatal, because the next row with that primary key tries to write an index entry
+that already exists.
+
+So a table that has ever had a secondary index added, removed or reordered can leave an account that accepts
+nothing and shows no reason.
+
+Clearing them needs a tool that declares **every secondary index the table has ever had, in the original
+order**, and walks each one with raw cursors (`IDX64.lowerBound` / `next` / `remove` — none of which decode).
+That requires knowing the account's full history.
+
+**On a development chain, do not attempt the archaeology: use a fresh account.** An account costs a few XPR of
+RAM; hours of forensics cost more, and the recovered account is never provably clean. The practical rule is
+that **a contract account which has held rows under a different layout is disposable, not repairable** — so
+decide the tables before the first deployment anybody transacts with, and if they must change afterwards, move
+to a new account on every chain at once so the names stay in step.
