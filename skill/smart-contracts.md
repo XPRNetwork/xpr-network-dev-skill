@@ -768,9 +768,20 @@ nothing and shows no reason.
 
 Clearing them needs a tool that declares **every secondary index the table has ever had, in the original
 order**, and walks each one with raw cursors (`IDX64.lowerBound` / `next` / `remove` — none of which decode).
-That requires knowing the account's full history.
 
-**On a development chain, do not attempt the archaeology: use a fresh account.** An account costs a few XPR of
+The detail that makes or breaks it: **get the index through `TableStore`, never through a `MultiIndex` you
+construct yourself.** The compiler wires secondary indexes into the store's MultiIndex; a hand-built one has an
+EMPTY index list, so the sweep deletes nothing and reports "no such index" while appearing to run.
+
+```ts
+const store = new TableStore<AnyRow>(this.receiver)   // indexes wired by the compiler
+const idx = <IDX64>store.mi.idxdbs[i]
+let it = idx.lowerBound(0)
+while (it.i >= 0) { const next = idx.next(it); idx.remove(it); it = next }
+```
+
+This works — an account cleared this way takes writes again normally. But it needs the account's full index
+history, which you only have if you broke it yourself. **On a development chain, prefer a fresh account.** An account costs a few XPR of
 RAM; hours of forensics cost more, and the recovered account is never provably clean. The practical rule is
 that **a contract account which has held rows under a different layout is disposable, not repairable** — so
 decide the tables before the first deployment anybody transacts with, and if they must change afterwards, move
