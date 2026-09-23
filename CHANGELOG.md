@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.8.0] — 2026-09-24
+
+Hyperion operations corrections from running the XPR mainnet full-history node in production. MINOR bump: one correction to existing advice plus new reference content. Every claim was checked against the Hyperion 4.0.8 source on the node and against live cluster settings.
+
+### Fixed — `hyperion-operations-caveats.md` §0/§5
+- "Edit the legacy template with `PUT _template/proton-action`" does not persist: the indexer master re-PUTs every legacy template from `index-templates.ts` on each start (`updateIndexTemplates()`). The advice now says to edit the definitions file (`src/` and `build/`), restart gracefully and verify, and to treat it as a local patch that must be re-applied after upgrades.
+
+### Added
+- §3: the real ES disk watermarks (low/high/flood) and their `max_headroom` caps, which make the high watermark trip at 150 GB free on large drives (earlier than "90%"). Includes the absolute-watermark settings and advice to alert on free space at the next 10M-block partition boundary. `hyperion-setup.md` operations note corrected to match.
+- §5: `_disk_usage` to find what actually uses the bytes; `act_digest` is dynamically mapped as text + keyword in 4.0.8 (~26% of an action partition). Mapping it as `keyword` without `doc_values` keeps it in `_source`, in responses and searchable, and cuts ~18% of future partition size. Also a note to keep data (e.g. `eosio::onblock`) rather than blacklist on public nodes.
+- §11: **every indexer restart leaves a block gap** (the live reader resumes at head; a 30 s graceful restart left 59 missing blocks) — repair after restarts or automate `quick-scan` + `fill-missing` on a cron.
+- §11: `fill-missing --host` takes the bare host; the headless `clearLine` crash happens after the request is sent; alert on `/v2/health` `missing_blocks` > 0 (43 missing blocks appeared on a healthy live node); `scan-actions` takes ~15 s for full history.
+
 ## [2.7.0] — 2026-09-17
 
 Security and bug review of the whole skill. Three shell scripts and all 31 modules were reviewed for leaked secrets, private hostnames, unsafe operational advice, and exploitable patterns in the contract samples. Nothing leaked. But because AI agents copy these samples verbatim, several samples were fund-draining as written, and the node chapter opened ports it should not. Every high-severity item was confirmed against the source line and, for proton-tsc claims, against the installed SDK (`proton-tsc` 0.3.58 / `as-chain`). MINOR bump: substantial corrections.

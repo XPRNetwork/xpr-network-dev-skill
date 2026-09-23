@@ -163,7 +163,7 @@ Enable streaming if you want the websocket API: `"features": { "streaming": { "e
 ## Operations (hard-won BP wisdom)
 
 - **Stopping the indexer: use trigger stop, not `pm2 stop`** — trigger stop lets the queues drain; a hard stop leaves messages in RabbitMQ and can corrupt progress. (`./stop <chain>-indexer` in v4; it reads `control_port` from `connections.json` → `chains.<chain>.control_port`, default 7002.)
-- **Watch disk on BOTH filesystems.** Running out of space is the #1 Hyperion killer among operators (it has taken out a BP's pair of instances simultaneously). ES needs ~15% free headroom or it goes read-only — see caveats §2–§3 for the Redis temp-file and partition-boundary failure modes.
+- **Watch disk on BOTH filesystems.** Running out of space is the #1 Hyperion killer among operators (it has taken out a BP's pair of instances simultaneously). ES stops allocating shards (new partitions fail) at the *high* watermark and goes read-only at *flood stage* — on large disks both are capped by `max_headroom`, so check the real values — see caveats §3, plus §2 for the Redis temp-file failure mode.
 - **Missing blocks**: chain microforks cause occasional gaps; there's a repair script in Hyperion's `scripts/` folder to find and fix them. EOSphere's blog also covers it.
 - **Queue backups**: RabbitMQ queues randomly backing up is a known Hyperion quirk (operators running dozens of instances see it) — watch queue depth in the mgmt UI (`127.0.0.1:15672`). Revive procedure in caveats §5.5.
 - Health check: `/v2/health` must show StateHistory/RabbitMq/NodeosRPC/Elasticsearch all `OK` — this is what danemarkbp's public checker polls. Get listed: `https://danemarkbp.com/bp-stats`.

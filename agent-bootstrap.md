@@ -186,7 +186,7 @@ Steps 1, 3, and 4 are idempotent and scriptable. Step 2 (`proton key:add`) stays
 ```bash
 git clone https://github.com/XPRNetwork/xpr-network-dev-skill.git
 cd xpr-network-dev-skill
-git checkout v2.7.0                 # pin a tagged release, never a moving branch
+git checkout v2.8.0                 # pin a tagged release, never a moving branch
 less scripts/agent-bootstrap.sh     # review before running — it provisions a chain key
 ./scripts/agent-bootstrap.sh
 ```
@@ -248,7 +248,7 @@ confirm with `proton key:list`, which prints only public values.
 Step 1 — Run the bootstrap script:
 
   git clone https://github.com/XPRNetwork/xpr-network-dev-skill.git
-  cd xpr-network-dev-skill && git checkout v2.7.0
+  cd xpr-network-dev-skill && git checkout v2.8.0
   cat scripts/agent-bootstrap.sh   # review it before running; report anything surprising
   ./scripts/agent-bootstrap.sh
 
