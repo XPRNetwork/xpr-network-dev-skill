@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.9.0] — 2026-09-24
+
+SimpleDEX V2.1a is live on mainnet (contract `simpledex`, code `c8cea09e…`). MINOR bump: new reference content.
+
+### Added — `simpledex.md`
+- **`route:` memo** — single-transfer multi-hop swaps (`route:<pool>,<pool>,...:<minOut>`, 1–4 pools, direction derived per hop, protocol fee once at the summed fee rates, payout memo `SimpleDEX V2: Multi-hop`).
+- Exact **protocol-fee** math for quotes (BigInt), and the note that `minOut` is checked against the net amount.
+- Constraints: max swap ratio is per hop, paused pools rejected on every path, deposits accept only the pool's own tokens.
+
 ## [2.8.0] — 2026-09-24
 
 Hyperion operations corrections from running the XPR mainnet full-history node in production. MINOR bump: one correction to existing advice plus new reference content. Every claim was checked against the Hyperion 4.0.8 source on the node and against live cluster settings.

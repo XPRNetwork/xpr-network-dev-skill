@@ -137,31 +137,59 @@ amountOut = (reserveOut * amountIn * (10000 - feeRate))
           / (reserveIn * 10000 + amountIn * (10000 - feeRate))
 ```
 
+The contract then deducts a **protocol fee** from that output before paying you, and
+`MIN_OUT` is compared with the amount **after** it — compute `minOut` from the net value or
+tight slippage settings fail deterministically:
+
 ```typescript
-function calculateSwapOutput(
-  amountIn: number,
-  reserveIn: number,
-  reserveOut: number,
-  feeRate: number = 30  // 0.3% = 30 bps
-): number {
-  const inputWithFee = amountIn * (10000 - feeRate);
-  return Math.floor((reserveOut * inputWithFee) / (reserveIn * 10000 + inputWithFee));
+// Raw integer units throughout (BigInt: amountOut * feeRate can exceed 2^53)
+function swapOutput(amountIn: bigint, reserveIn: bigint, reserveOut: bigint, feeRate = 30n): bigint {
+  const inputWithFee = amountIn * (10000n - feeRate);
+  return (reserveOut * inputWithFee) / (reserveIn * 10000n + inputWithFee);
 }
+// protofee table: `proton table simpledex simpledex protofee` (mainnet: enabled, feeShareBps 5000)
+function netOfProtocolFee(amountOut: bigint, feeRateBps: bigint, feeShareBps = 5000n): bigint {
+  const fee = ((amountOut * feeRateBps) / 10000n) * feeShareBps / 10000n;
+  return fee > 0n && fee < amountOut ? amountOut - fee : amountOut;
+}
+// single swap: netOfProtocolFee(swapOutput(...), pool.feeRate)
+// multi-hop:   chain swapOutput through each pool, then netOfProtocolFee(final, Σ feeRates) once
 ```
 
-### Multi-Hop Swaps
+### Multi-Hop Swaps — `route:` memo (single transfer)
 
-Route through up to 4 pools. Deposit first, then call `multihopswap` with the pool sequence and per-hop `isTokenAIns` flags.
+Since SimpleDEX V2.1a (2026-09-24) a multi-pool swap is **one transfer** — the pattern
+aggregators use on other XPR DEXes:
+
+```bash
+# XPR → XMD (pool 1) → XUSDC (pool 2); minimum 12000 raw XUSDC after fees
+proton action eosio.token transfer \
+  '["myaccount","simpledex","5.0000 XPR","route:1,2:12000"]' \
+  myaccount@active
+```
+
+- Memo: `route:<pool1>,<pool2>,...,<poolN>:<minOut>` — 1–4 distinct pool IDs.
+- **No direction flags**: the transferred token (contract + exact symbol) must be token A or B of
+  the first pool; each later pool must take the previous hop's output. Wrong token / broken route → the
+  whole transfer reverts (`Route: input token not in pool N`, `Route: hop K (pool N) does not take the previous output`).
+- Protocol fee: once, on the final output, at the **sum** of the hops' fee rates.
+- Payout: one transfer, memo `SimpleDEX V2: Multi-hop`. Not rate-limited (like `swap:` memos).
+
+The older two-step path still works: deposit with memo `deposit:<firstPool>`, then call
+`multihopswap` with the pool sequence and per-hop `isTokenAIns` flags (same fee model).
 
 ### Swap Constraints
 
 | Constraint | Value |
 |-----------|-------|
-| Max swap | 50% of input reserve |
+| Max swap | 50% of the input reserve, checked per hop |
+| Paused pools | Rejected on every path (`Pool N is paused`) |
+| Deposits | `deposit:<pool>` accepts only that pool's own tokens (contract + exact symbol) |
 | Cooldown (direct actions only) | 1 second between calls |
 | AMM fee | 0.3% (30 bps) — kept by LPs via reserve growth |
 | Protocol fee | 50% of the fee-equivalent on output → treasury (`dex.protonnz`) |
-| Effective user cost | ~0.45% total per swap |
+| Protocol fee on multi-hop | once on the final output at the sum of the hops' fee rates |
+| Effective user cost | ~0.45% total per single 0.3% swap |
 
 ---
 
