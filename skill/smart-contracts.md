@@ -685,3 +685,104 @@ export class MyToken extends Contract {
 - Read `safety-guidelines.md` before deploying (CRITICAL)
 - See `examples.md` for production contract patterns
 - Use `cli-reference.md` for deployment commands
+
+
+---
+
+## Things that are irreversible, and one that looks safe but is not
+
+### A table's layout is frozen the moment it holds a row — appending counts
+
+A row is packed bytes with no field names. Change the struct — including **adding a field at the end**, because
+rows written earlier do not contain it — and every existing row decodes wrongly or aborts.
+
+The failure is worse than it sounds, because a contract that cannot decode its own rows usually cannot repair
+them either: every helper that reads a row deserializes it first. A real sequence:
+
+1. v1 wrote a `config` singleton row.
+2. v2 added two fields to that struct and was deployed.
+3. `setconfig` aborted with `invalid symbol` — while reading the row it was about to **replace**.
+4. The settings were unreachable. There was no action that could fix it, and the account was abandoned.
+
+**How to survive it:**
+
+- **Reserve spares up front** on every table (`spare1: u64`, and a `string`/`name` if you might need those
+  shapes — a `u64` cannot stand in for a string).
+- **Pin the layout in CI.** Store each published table's fields in a file and fail the build when they change,
+  so the change is a deliberate diff rather than a surprise.
+- **`Singleton.remove()` never deserializes** — it is `find` + `remove`. A `resetconfig` action that calls it is
+  the one escape hatch that works on a row nobody can read. Guard it (contract auth, and refuse while anything
+  depends on the settings), and add it *before* you need it.
+- For a table with many rows, the same trick works with raw iterators: `lowerBound`/`next`/`remove` are cursor
+  operations and never decode. `getValue()` is the only thing that decodes. A throwaway "wipe" contract with
+  matching table **names** (the struct is irrelevant — nothing reads it) can clear a stuck account.
+
+### `availablePrimaryKey` is "last row + 1", not "never used before"
+
+It reads the last row's key and adds one; on an empty table it is 0. So **if you ever delete rows, ids are
+recycled**, and anything derived from an id (an account name, an external reference, a file on disk) collides
+with the old one.
+
+If rows can be deleted, keep your own counter in a singleton and never derive the next id from the table.
+
+### Aborting inside a `transfer` notification aborts the SENDER's transaction
+
+A `@action("transfer", notify)` handler that calls `check()` and fails does not "reject the payment" — it fails
+the whole transaction that sent it. The practical consequences:
+
+- A contract that throws in its handler **cannot be sent any token at all**, including the tokens it needs to
+  operate, and including a transfer that merely leads one of your own transactions for CPU.
+- A deployed-but-unconfigured contract that does `check(configured)` in its handler is bricked: you cannot even
+  fund it or configure it if your configuration transaction carries a transfer.
+- When the contract runs out of RAM, `store()` throws here too — so every payment starts being rejected at chain
+  level, with nothing in your logs.
+
+**Rule:** in a notification handler, every path is a `return`, never a `check`. Validate, and if it is not for
+you or not valid, either return or send the money back inline.
+
+### ABI action fields use the contract's PARAMETER names
+
+`proton-asc` takes field names straight from the action's TypeScript parameters, so `create(orderId: u64)` is
+`{"orderId": 0}` in the transaction, not `order_id`. Table fields, by contrast, are the class property names and
+usually snake_case. Read `target/<name>.contract.abi` rather than guessing; the error is
+`missing <action>.<field> (type=...)`.
+
+
+### Deleting the rows does NOT un-stick a table whose layout changed
+
+The worst version of the layout problem is the one that looks fixed. After deleting every row:
+
+```
+get_table_rows  ->  {"rows": []}     for the table AND for every secondary index
+next insert     ->  could not insert object, most likely a uniqueness constraint was violated
+```
+
+The cause is **orphaned secondary index entries**. Removing a row cleans up only the indexes the *current*
+struct declares; entries written under an index that an earlier version declared stay behind. They are
+invisible, because a query on a secondary index resolves each entry to its primary row, finds none, and returns
+an empty list. And they are fatal, because the next row with that primary key tries to write an index entry
+that already exists.
+
+So a table that has ever had a secondary index added, removed or reordered can leave an account that accepts
+nothing and shows no reason.
+
+Clearing them needs a tool that declares **every secondary index the table has ever had, in the original
+order**, and walks each one with raw cursors (`IDX64.lowerBound` / `next` / `remove` — none of which decode).
+
+The detail that makes or breaks it: **get the index through `TableStore`, never through a `MultiIndex` you
+construct yourself.** The compiler wires secondary indexes into the store's MultiIndex; a hand-built one has an
+EMPTY index list, so the sweep deletes nothing and reports "no such index" while appearing to run.
+
+```ts
+const store = new TableStore<AnyRow>(this.receiver)   // indexes wired by the compiler
+const idx = <IDX64>store.mi.idxdbs[i]
+let it = idx.lowerBound(0)
+while (it.i >= 0) { const next = idx.next(it); idx.remove(it); it = next }
+```
+
+This works — an account cleared this way takes writes again normally. But it needs the account's full index
+history, which you only have if you broke it yourself. **On a development chain, prefer a fresh account.** An account costs a few XPR of
+RAM; hours of forensics cost more, and the recovered account is never provably clean. The practical rule is
+that **a contract account which has held rows under a different layout is disposable, not repairable** — so
+decide the tables before the first deployment anybody transacts with, and if they must change afterwards, move
+to a new account on every chain at once so the names stay in step.
