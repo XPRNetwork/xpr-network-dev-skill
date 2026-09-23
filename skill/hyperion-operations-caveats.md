@@ -16,7 +16,7 @@ What that does on XPR: DEX actions carry arbitrary keys in `act.data` (`"136|XMD
 
 **Fix:** `DELETE _index_template/<yours>`; delete the malformed partition index — first `GET /proton-action-v1-0000NN/_count` and **confirm with the operator before deleting**, never unattended; purge the poisoned action queues (safe ONLY because the range gets re-read from SHIP); re-run the range. With the legacy template back in charge we measured ~4,900 blocks/sec through the same "impossibly dense" era that crawled at ~2/sec.
 
-**And the kicker: `best_compression` is already Hyperion's default** (`src/indexer/definitions/index-templates.ts`) — check `GET <index>/_settings` before "adding" it. To change replicas/codec on FUTURE indices, edit Hyperion's own legacy templates (`PUT _template/proton-action` with its full body modified), never a composable overlay.
+**And the kicker: `best_compression` is already Hyperion's default** (`src/indexer/definitions/index-templates.ts`) — check `GET <index>/_settings` before "adding" it. To change replicas/codec/mappings on FUTURE indices, change Hyperion's own legacy template — never a composable overlay. **But a `PUT _template/proton-action` alone does not stick:** the indexer master re-PUTs every legacy template from `src/indexer/definitions/index-templates.ts` (compiled to `build/indexer/definitions/index-templates.js`) on **every indexer start** (`updateIndexTemplates()` in `src/indexer/modules/master.ts`). Edit the definitions file (both `src/` and `build/`), then restart gracefully (`./stop <chain>-indexer && ./run <chain>-indexer`), and confirm with `GET _template/proton-action`. It is a local patch — re-apply it after every Hyperion upgrade.
 
 ---
 
@@ -91,6 +91,15 @@ curl -s -u elastic:$P 'localhost:9200/_cat/indices/proton-action-*?v&s=index' | 
 ```
 Hours were lost on that node chasing a "deserializer stall" that was purely disk. Experienced operators warn about this directly: once the ES data drive hits ~90% it flips read-only and causes a lot of pain.
 
+**Know the real thresholds.** ES has three disk watermarks: **low 85%** (no new replicas), **high 90%** (no shard allocation at all — this is what blocks the new partition), **flood_stage 95%** (every index goes read-only). On large disks the defaults are capped by `max_headroom` (high: 150 GB free, flood: 100 GB free), so on a 1.75 TB drive the high watermark trips at **150 GB free (~91%)**, earlier than "90%" suggests. Check with `GET _cluster/settings?include_defaults=true&flat_settings=true` (grep `watermark`) and `GET _cat/allocation?v`. On a single-node, NVMe history box it is reasonable to set absolute values and alert well before them:
+```
+PUT _cluster/settings
+{"persistent": {"cluster.routing.allocation.disk.watermark.low": "120gb",
+                "cluster.routing.allocation.disk.watermark.high": "60gb",
+                "cluster.routing.allocation.disk.watermark.flood_stage": "30gb"}}
+```
+(Absolute values must be used for all three together.) Pair it with a cron disk alert on the ES filesystem — the next partition boundary is predictable (every 10M blocks ≈ 58 days on XPR), so check the free space you will have *at the next boundary*, not today.
+
 **Recovery:** free space (see §2), delete the empty RED partition indices to get the cluster green, then resume. Check emptiness first — `GET /proton-action-v1-0000NN/_count` must return `0` — and **confirm with the operator before deleting**; an agent never runs this unattended:
 
 ```
@@ -123,6 +132,9 @@ Purging all `proton:*` queues and restarting repeatedly during the 230M disk inc
 - **`index.codec: best_compression` is Hyperion's default** (§0). It is ~30% smaller than the default codec and operators running full XPR history on enterprise NVMe report no measurable query-latency cost. Verify with `GET proton-action-v1-0000NN/_settings` rather than adding it.
 - **Do not add a composable `_index_template` to set codec or replicas.** It replaces Hyperion's legacy template wholesale (§0) and, as a second-order effect, new partitions come up with ES's default of **1 replica** instead of Hyperion's `es_replicas: 0` — **yellow** on a single node with an unassigned replica. If you already did this: `DELETE _index_template/<yours>` (the template only — confirm with the operator before deleting anything under `/proton-*`), then fix existing indices with `PUT /proton-*/_settings {"index":{"number_of_replicas":0}}`.
 - To change settings for future partitions, modify Hyperion's own legacy template body (`GET _template/proton-action`, edit, `PUT _template/proton-action`) so mappings and shard counts survive.
+- **Find what is actually taking the bytes before optimising:** `POST proton-action-v1-0000NN/_disk_usage?run_expensive_tasks=true` (read-only; minutes on a 30 GB partition). Document counts mislead — small actions (e.g. `eosio::onblock`) weigh far less than their share of docs.
+- **`act_digest` is not in Hyperion 4.0.8's action template**, so ES maps it **dynamically as `text` + `.keyword`** — measured at **~26% of an action partition's bytes** on XPR mainnet (text inverted index + keyword inverted index + keyword doc_values; 7.85 GB of 27.7 GB on a 57M-doc partition). Hyperion only reads `act_digest` back from `_source` (receipt regrouping in `get_transaction` / `regroup-actions.ts`); nothing sorts or aggregates on it. Mapping it as `"act_digest": {"type": "keyword", "doc_values": false}` (added next to `trx_id` in the action template — see §0 for why it must go into `index-templates.ts`) keeps it in `_source`, in every API response and exact-match searchable, and cuts ~18% of future partition size. It applies from the next partition; existing partitions keep their mapping until reindexed.
+- **Keep data rather than blacklisting to save space on a public node.** Many operators blacklist `eosio::onblock` (historically for deserialization speed), but one operator suspected it changed `get_proposals` expiry behaviour; on a public full-history node prefer mapping fixes over dropping actions.
 - **`forcemerge`** reclaims disk from documents marked for deletion, but it takes time and is I/O-heavy — run it when **not** actively indexing. Existing indices keep their codec until reindexed/force-merged.
 
 ---
@@ -206,9 +218,13 @@ Verify with `sort=asc&after=<genesis year>` returning the chain's first `eosio:o
 - The scattered ones: restart/purge events during incident recovery (gaps in multiples of the 500-doc prefetch, exactly as operators predicted).
 
 **The standard before claiming completeness (or publishing publicly):**
-1. `./hyp-repair scan-actions <chain> -f 2 -l <head>` — action-level binary-search validation. (Run CLI tools under a pseudo-TTY: `script -qec "..." log` — they crash headless on `process.stdout.clearLine`.)
+1. `./hyp-repair scan-actions <chain> -f 2 -l <head>` — action-level binary-search validation (fast: ~15 s for full XPR history on NVMe). (Run CLI tools under a pseudo-TTY: `script -qec "..." log` — they crash headless on `process.stdout.clearLine`.)
 2. `fill-missing` what it finds; **re-scan to an explicit zero**: "No missing actions found."
+   - `--host` takes the **bare host**: `./hyp-repair fill-missing <chain> <file> --host localhost`. The CLI appends `:<control_port>/local` itself, so `ws://localhost:7002` or `localhost:7002` both fail (`getaddrinfo EAI_AGAIN ws` / `Invalid URL: ws://localhost:7002:7002/local`).
+   - Headless, it crashes on `process.stdout.clearLine` **after** sending the request to the indexer — the repair still runs. Confirm with a re-scan rather than trusting the exit code.
 3. Independent cross-check against a reference node: per-week `get_actions total.value` for the busiest contract (`dex`) since genesis — any week you return 0 and the reference doesn't is a hole. ~330 requests, minutes.
-4. Keep a **daily canary** (last ~5 weeks of the same comparison) so future holes alert instead of corrupting downstream ledgers.
+4. **Every indexer restart leaves a block gap on a live node.** With `live_reader: true` the reader resumes at the chain head, not at the last indexed block, so blocks produced while the indexer was stopped are skipped — even with a graceful `./stop` (measured: a ~30 s restart → 59 missing blocks). Run `quick-scan` + `fill-missing` after every restart, or automate it: a root cron every 15 min that runs `quick-scan` (~0.5 s, read-only) and, only if gaps exist, `fill-missing` under `script -qec` (pseudo-TTY), then re-scans and notifies. Guard it with `flock` and skip it while the indexer is down.
+5. **Alert on `/v2/health` → Elasticsearch `missing_blocks` > 0.** A healthy live node (not backfilling) developed 43 missing blocks in 3 ranges over Aug–Sep 2026; one held a DEX swap every other public node had, and downstream indexers silently lacked it until a tax reconciliation flagged it. `quick-scan` + `fill-missing` fixed it in minutes.
+6. Keep a **daily canary** (last ~5 weeks of the same comparison) so future holes alert instead of corrupting downstream ledgers.
 
 A downstream tax pipeline mis-classified ~12,000 payouts because of the Feb hole — completeness is a *correctness* property for anything financial, not a quality nicety.
