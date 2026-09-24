@@ -293,6 +293,10 @@ Contributions are welcome! Please:
 3. Test your changes with Claude Code
 4. Submit a pull request
 
+### Issues and security
+
+Found a mistake, a broken link, or a doc that no longer matches mainnet? [Open a GitHub issue](https://github.com/XPRNetwork/xpr-network-dev-skill/issues/new). The same goes for security concerns: anything here that would lead an agent into an unsafe pattern is a bug, and a public issue is the right place for it. Email is not a tracked channel; issues are the only route that reaches the maintainers.
+
 ### Areas for Contribution
 
 - **Verified corrections** — when you hit a doc that doesn't match on-chain reality, open a PR with the curl/source citation; this skill prioritizes verified-against-mainnet over pattern-matched-against-training-data
