@@ -6,6 +6,73 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.10.0] — 2026-09-27
+
+Learnings from an AtomicAssets drop on XPR Network: a `proton-tsc` claim contract using the `rng` oracle, a
+full-size testnet rehearsal (3,333 assets, 2026-09-24/25), and the mainnet mint that followed (2026-09-25).
+Tools: `@proton/cli` 0.1.98 (source checked against 0.1.99), `proton-tsc` 0.3.58, `@proton/vert` 0.3.24,
+`@proton/web-sdk` / `@proton/link` 5.1.0. MINOR bump: new reference content and some corrected notes. The
+measured numbers come from one collection, so treat them as rough.
+
+### Added — contracts (`smart-contracts.md`, `testing-debugging.md`, `troubleshooting.md`)
+- **Known SDK bug:** `getCodeHash()` in `proton-tsc` 0.3.58 / `as-chain` declares `get_code_hash` with 3 params, but the node intrinsic takes 4. `setcode` fails with `wrong type for imported function get_code_hash`. Added a workaround that ran on testnet and mainnet: an `@external` 4-param import, plus the exact 43-byte packed layout (`varuint32 struct_version | u64 code_sequence | checksum256 code_hash | u8 vm_type | u8 vm_version`, no account field; hash at bytes 9..40). The helper fails safe on any unexpected length or version.
+- The local test VM does not check intrinsic signatures: vert 0.3.24 implements the same 3-param `get_code_hash`, and 15/15 tests passed with the broken import. Added "deploy to testnet early".
+- Troubleshooting entries for the `get_code_hash` error and for actions that report `"status": "executed"` on an account with an ABI but no code.
+- Chain vs vert auth wording: a node says `missing authority of X`, vert says `missing required authority X`. Fixed the vert test example, which used the chain wording and would not match.
+- Testnet checklist: oracle callbacks, a claimer with contract code, and "rehearse at full size".
+
+### Added — RNG (`oracles-randomness.md`)
+- The `rng` oracle is live on testnet. The callback arrived in about 1–3 s, as a separate transaction.
+- Best practices: use a never-reused request id as `assoc_id` and ignore stale or cancelled callbacks (tested with a cancel and a retry in flight); no `check()` on normal paths in `receiverand` (it runs inside `setrand`); don't auto-send results to accounts with contract code, which could reject the transfer and stall or re-roll the draw.
+
+### Added — CLI (`cli-reference.md`, `testing-debugging.md`, `SKILL.md`, `safety-guidelines.md`)
+- `contract:set` prompts `Continue? (y/N)` and has no `--yes` flag. Scripts must pipe `echo y |`.
+- `contract:set` can deploy the ABI when the WASM is rejected, and still exit 0. Check `get_code_hash` after every deploy (all zeros = no code). Added this check to the automated testing script.
+- New section, *Scripting the CLI for bulk or high-value jobs*:
+  - `transaction:push` / `action` / `contract:set` print errors and exit 0.
+  - The CLI signs with `expireSeconds: 3000`.
+  - Header fields you supply (`expiration`, `ref_block_*`) override the CLI's.
+  - How to tell "never broadcast" (the error names a read call) from "rejected by the node" from "ambiguous".
+  - Resend only after irreversible time passes the expiration, reading state from the same endpoint.
+  - The selected chain is global: check it before every signing step.
+- Don't grep CLI output for `error`, because successes include `"error_code": null`.
+- `transaction:push` needs `{"actions":[…]}`. Plain action data goes through `proton action`.
+- Buying a `resources` plan from the CLI (deposit, then `buyplan`). Faucet: 1,000 test XPR per account per 24 h.
+- SKILL.md safety reminder: a push response is not proof.
+
+### Added — accounts (`accounts-permissions.md`, `cli-reference.md`)
+- `proton account:create-funded NAME -c CREATOR -k PUB_K1_… -o BACKUP_OWNER` creates accounts with no email step and prints no private key when `-k` is given. It is the recommended path for agent-driven testnet rehearsals.
+
+### Added — resources (`staking-governance.md`, `troubleshooting.md`, `nfts-atomicassets.md`)
+- `buyplan` pays from a deposit: transfer XPR to `resources` first (credited to the sender in `resources::accounts`), then call `buyplan`. Verified on mainnet with plan 0 (Basic, 744 h).
+- Troubleshooting for `transaction net usage is too high: X > Y`: bulk jobs from one account use up the free NET allowance (~450 KB / 24 h observed on testnet). The node rejected the transaction, so retrying after buying a plan is safe.
+
+### Added — NFTs (`nfts-atomicassets.md`)
+- In action data, `ipfs`-typed attributes use the variant type `string` (`["string","Qm…"]`), including collection `img` in `createcol` data (the example now shows it). `["ipfs",…]` fails client-side with `type "ipfs" is not valid for variant`. The value must be a CIDv0.
+- Template `immutable_data` keys must exist in the schema. For collections where every asset is unique, use an empty template with `max_supply` and `burnable: false`.
+- New *Bulk Minting Safely* pattern, used for 3,333 editions on testnet (with a deliberate crash and a real ambiguous push) and on mainnet (167/167 batches, no duplicates):
+  - `issued_supply` is the progress counter, and editions are minted in order.
+  - Every attempt is journaled with its own expiration before the push.
+  - The chain decides the outcome, not the CLI.
+  - Ambiguous batches are resent only after they can no longer land.
+  - A lock file, resource checks, and a verify step.
+- `template_mint` from the AtomicAssets API is back-filled (0 at first). Verify mint order by `asset_id` instead, and wait for the indexer count to match `issued_supply`.
+- Measured:
+  - ~280 B RAM per asset (3,333 assets, ~15 attributes, empty template data).
+  - ~470–610 µs CPU per 10-asset mint.
+  - ~5.6 KB NET per 20-asset mint. Free NET ran out after ~80 batches.
+
+### Added — RPC (`rpc-queries.md`, `troubleshooting.md`)
+- `get_table_rows` can return fewer rows than `limit` (about 1,000 per call observed on AtomicAssets `assets`, testnet). A one-page read missed 2,300 of 3,300 rows. Always loop on `more` / `next_key`.
+- Troubleshooting: *A push returned a `transaction_id`, but nothing changed on chain*. A non-producing API node executes the transaction speculatively against its own state. The producer rejected it, and it was dropped without an error (observed on testnet). Confirm by reading state.
+
+### Fixed — web SDK (`web-sdk.md`, `troubleshooting.md`, `SKILL.md`)
+- `@proton/web-sdk` **5.1.0 is GA** (npm `latest`). The version note had called 5.x "rc" and recommended pinning `@4`. Added the 5.x options shape (`uiOptions.appInfo.{name,logo,logoRounded}`, `selectorOptions` limited to `walletType`/`enabledWalletTypes`), and the advice to match `@proton/link@5.1.0`. The 4.x examples are kept and labelled.
+- New pattern: **login and transact in separate clicks**, with nothing async before `transact()` in the click. Awaiting login and then calling `session.transact()` in the same click gets the WebAuth signing popup blocked.
+- The 5.1.0 WebAuth link opens its window synchronously in `transact()`. A blocked popup leaves `link.childWindow` `null`, and the promise never settles (added a detection snippet). A window closed by hand also leaves it pending. Treat that as an unknown outcome, not a cancel.
+- `storagePrefix`: key format documented. Scope saved sessions per chain and contract, so testnet and mainnet builds on one origin don't restore each other's sessions.
+- 5.1.0 login and cancel shapes (`{ error }` return, `E_CANCEL` / `E_WALLET_TYPE`, `'Closed'`) replace the "User cancelled" string check.
+
 ## [2.9.0] — 2026-09-24
 
 SimpleDEX V2.1a is live on mainnet (contract `simpledex`, code `c8cea09e…`). MINOR bump: new reference content.

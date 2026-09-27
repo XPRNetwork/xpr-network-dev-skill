@@ -65,7 +65,7 @@ describe('MyContract', () => {
   test('should fail without auth', async () => {
     await expectToThrow(
       contract.actions.store(['user1', 'Hello']).send('user2@active'),
-      'missing authority of user1'
+      'missing required authority user1'   // vert's wording; a real node says "missing authority of user1"
     );
   });
 
@@ -129,10 +129,14 @@ test('should expire after duration', async () => {
 # Switch to testnet
 proton chain:set proton-test
 
-# Create testnet account (if needed)
+# Create testnet account (if needed; prompts for email verification)
 proton account:create mytestaccount
 
-# Get test tokens
+# Or create extra accounts from one you already control: no email, and no private
+# key is printed when you pass -k (best for agent-driven rehearsals)
+proton account:create-funded mytestuser2 -c mytestaccount -k PUB_K1_xxxxx -o backupowner
+
+# Get test tokens (1,000 test XPR per account per 24 h)
 proton faucet:claim XPR mytestaccount
 ```
 
@@ -142,22 +146,41 @@ proton faucet:claim XPR mytestaccount
 # Build
 npm run build
 
-# Deploy
-proton contract:set mytestaccount ./assembly/target
+# Deploy (contract:set asks "Continue? (y/N)" and has no --yes flag)
+echo y | proton contract:set mytestaccount ./assembly/target
+
+# Confirm the WASM landed: an all-zero code_hash means only the ABI was set
+curl -s -X POST https://api-xprnetwork-test.saltant.io/v1/chain/get_code_hash \
+  -d '{"account_name":"mytestaccount"}'
 
 # Initialize
 proton action mytestaccount init '{"owner":"mytestaccount"}' mytestaccount
 ```
 
+> **Deploy to testnet early, not only after the unit tests pass.** The local test VM does not check that the
+> contract's imported intrinsics match the node's signatures (`@proton/vert` 0.3.24 implements `get_code_hash`
+> with the same 3 parameters as `proton-tsc`, so that bug is invisible locally). On a testnet rehearsal
+> (2026-09-24), a contract passed 15/15 local tests and was then rejected at `setcode` with
+> `wrong type for imported function get_code_hash` (see `smart-contracts.md` → *Known SDK bug*). A deploy on
+> the first day of development catches this.
+
 ### Testnet Verification Checklist
 
-- [ ] Contract deploys without errors
+- [ ] Contract deploys without errors, and `get_code_hash` is non-zero
 - [ ] Init action succeeds
 - [ ] All actions work as expected
 - [ ] Table data persists correctly
 - [ ] Inline actions execute
 - [ ] Notifications fire to other contracts
 - [ ] Error messages are clear
+- [ ] Oracle callbacks (`rng::receiverand`) arrive, and a late or cancelled callback is ignored
+- [ ] Tested with an account that has contract code as well as a plain WebAuth account
+
+> **Rehearse at full size.** Some failures only show up at the real volume. In a 3,333-asset mint rehearsal on
+> testnet (September 2026), none of these appeared in small runs: the minter's free NET ran out after ~80
+> transactions, a monitor that read one `get_table_rows` page missed 2,300 rows, and one CLI push had an
+> ambiguous result. Run the whole job on testnet with the real data, the real batch sizes and the same
+> scripts, including one deliberate interruption, before you run it on mainnet.
 
 ---
 
@@ -177,7 +200,7 @@ The message after "with message:" is from your contract's `check()` calls.
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `missing authority of X` | Wrong authorization | Use correct account in `authorization` |
+| `missing authority of X` (chain) / `missing required authority X` (vert) | Wrong authorization | Use correct account in `authorization`. Match both wordings in shared error parsing |
 | `assertion failure with message: ...` | Contract validation failed | Check the condition in your contract |
 | `account does not exist` | Invalid account name | Verify account exists on chain |
 | `table not found` | Querying non-existent table | Check contract is deployed, table name correct |
@@ -374,7 +397,13 @@ npm run build
 
 echo "=== Deploying to testnet ==="
 proton chain:set proton-test
-proton contract:set $TESTNET_ACCOUNT ./assembly/target
+echo y | proton contract:set $TESTNET_ACCOUNT ./assembly/target
+# contract:set can set the ABI, fail the WASM, and still exit 0: check the code hash
+if curl -s -X POST https://api-xprnetwork-test.saltant.io/v1/chain/get_code_hash \
+     -d '{"account_name":"'$TESTNET_ACCOUNT'"}' | grep -q '"code_hash":"0\{64\}"'; then
+  echo "✗ No WASM on $TESTNET_ACCOUNT (ABI only)"
+  exit 1
+fi
 
 echo "=== Running tests ==="
 

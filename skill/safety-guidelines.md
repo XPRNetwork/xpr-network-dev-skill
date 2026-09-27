@@ -256,6 +256,10 @@ proton contract:set mycontract ./assembly/target
 #                   IS THIS CORRECT?
 ```
 
+Also check the **network**. The CLI's selected chain is global to the machine (`proton chain:set` writes
+shared config), so another terminal or agent session can switch it between your commands. Run
+`proton chain:get` immediately before every signing step, and stop if it isn't the chain you expect.
+
 ---
 
 ## Multi-Contract Account Safety

@@ -1,7 +1,7 @@
 ---
 name: xpr-network-dev
 description: XPR Network (formerly Proton) blockchain development - proton-tsc smart contracts, @proton CLI and web SDK, RPC and Hyperion queries, DeFi (MetalX, Alcor, LOAN), NFTs, the XPR Agents job board, node and Hyperion operations. Use for anything mentioning XPR, Proton, or @proton packages.
-version: 2.9.0
+version: 2.10.0
 author: XPR Network Community
 repository: https://github.com/XPRNetwork/xpr-network-dev-skill
 ---
@@ -53,7 +53,7 @@ Load specialized modules based on your task:
 | Module | Read When | Key Topics |
 |--------|-----------|------------|
 | `smart-contracts.md` | Building contracts | Tables, actions, auth, build/deploy |
-| `cli-reference.md` | Using CLI tools | Network, keys, deploy, queries, transfers |
+| `cli-reference.md` | Using CLI tools | Network, keys, deploy, queries, transfers, safe scripting of bulk jobs |
 | `web-sdk.md` | Building dApps | Wallet connect, transactions, sessions, transfers |
 | `backend-patterns.md` | Server-side dev | proton CLI keychain signing (v0.3.0+), bots, key isolation |
 | `rpc-queries.md` | Reading chain data | RPC, Hyperion API, Light API, pagination, token balances |
@@ -128,7 +128,7 @@ proton table CONTRACT TABLE
 # Execute action
 proton action CONTRACT ACTION 'JSON_DATA' AUTHORIZATION
 
-# Deploy contract
+# Deploy contract (prompts Continue? (y/N) — pipe `echo y |` in scripts; then check get_code_hash is non-zero)
 proton contract:set ACCOUNT ./assembly/target
 ```
 
@@ -187,7 +187,7 @@ const { link, session } = await ProtonWebSDK({
     chainId: '384da888112027f0321850a169f737c33e53b388aad48b5adace4bab97f437e0',
     endpoints: ['https://proton.eosusa.io']
   },
-  selectorOptions: { appName: 'My App' }
+  selectorOptions: { appName: 'My App' }  // 4.x shape; 5.x (GA) uses uiOptions.appInfo — see web-sdk.md
 });
 
 // session.auth contains { actor, permission }
@@ -224,3 +224,4 @@ const { link, session } = await ProtonWebSDK({
 5. **Use new tables** for new features instead of modifying existing ones
 6. **DEX deposits MUST use empty memo** (`""`) — any other memo (e.g. `"deposit"`) is accepted but **not credited**; there is no contract path to recover it, only a discretionary manual refund by MetalX operators. Treat as fund loss. See `metalx-dex.md`.
 7. **All-numeric account names** (e.g. `333555`) cause silent data loss in `get_table_rows` — see `rpc-queries.md` for workarounds.
+8. **A push response is not proof.** The proton CLI exits 0 on errors, and a `transaction_id` from a non-producing API node can still be dropped by the producer. Confirm by reading chain state, and never resend a push with an unknown outcome before its expiration has passed (CLI default: 3,000 s) — see `cli-reference.md` → *Scripting the CLI for bulk or high-value jobs*.

@@ -350,6 +350,25 @@ async function buyResourcePlan(
 }
 ```
 
+> **Deposit first, then `buyplan`.** `buyplan` pays from the account's deposit in the `resources` contract,
+> not from its token balance. Transfer the plan price (from the `plans` table) to `resources` first. The
+> deposit is credited to the sender (`resources::accounts`, scope `resources`, one row per account with a
+> `balances` map). Then call `buyplan`:
+>
+> ```bash
+> proton action eosio.token transfer '{"from":"myaccount","to":"resources","quantity":"100.0000 XPR","memo":""}' myaccount
+> proton action resources buyplan '{"account":"myaccount","plan_index":0,"plan_quantity":1}' myaccount
+> ```
+>
+> Verified on mainnet (September 2026) as two separate transactions: the deposit, then `buyplan` for plan 0
+> (Basic, 744 h). `buyplan` emits a `planreceipt`, and the `subscription` row (scope `resources`) shows the
+> plan and `start_time`. The deposit and `buyplan` probably also work as two actions in one transaction, but
+> that wasn't tested.
+>
+> **When you need it:** a bulk job from one account (a large NFT mint, an airdrop) can use up the free NET
+> allowance in a few hours. Nodes then reject transactions with `transaction net usage is too high: X > Y`.
+> Basic gives about 10x the free NET, and it was enough for a 3,333-asset mint (167 transactions of ~5.6 KB).
+
 ---
 
 ## RAM (Blockchain Storage)

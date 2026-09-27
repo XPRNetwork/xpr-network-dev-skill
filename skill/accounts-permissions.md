@@ -46,13 +46,21 @@ Account: mycontract
 proton account:create newaccount
 
 # Account paid for by an existing account you control
-# (-c creator/payer, -k public key, -r RAM bytes, minimum 3000)
+# (-c creator/payer, -k public key, -r RAM bytes, minimum 3000,
+#  -o an account added as backup owner that can recover/rotate keys)
 proton account:create-funded newaccount -c payeracct -k PUB_K1_xxxxx -r 3000
+proton account:create-funded newaccount -c payeracct -k PUB_K1_xxxxx -o backupowner
 
 # Create on testnet
 proton chain:set proton-test
 proton account:create testaccount
 ```
+
+> **For agents and scripted rehearsals, use `account:create-funded` with `-k`.** It needs no email step, and
+> when you pass `-k` it prints no private key, so no secret ends up in the agent's context or logs. Generate the
+> key pair somewhere the agent can't read, pass only the public key, and fund each account on testnet with
+> `proton faucet:claim XPR <account>` (1,000 test XPR per account per 24 h). Without `-k`, the CLI generates a
+> new key for you, and `account:create` needs email verification. Keep both out of agent sessions.
 
 ### Via Transaction
 
