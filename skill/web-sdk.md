@@ -5,14 +5,23 @@ This guide covers wallet connection and transaction signing for web applications
 ## Installation
 
 ```bash
-npm install @proton/web-sdk@4 @proton/link@4
-# or
-yarn add @proton/web-sdk@4 @proton/link@4
+npm install @proton/web-sdk@4 @proton/link@4          # 4.x shape, matches the examples below
+npm install @proton/web-sdk@5.1.0 @proton/link@5.1.0  # current GA, 5.x options shape (see version note)
 ```
 
 **Important:** The `@proton/link` package is required for mobile wallet support. See [Mobile Wallet Support](#mobile-wallet-support) for details.
 
-> **Version note:** this module documents the **4.x** line. The npm `latest` tag is `5.1.0-rc-4` (5.0.0 GA April 2026), which changes the options shape: `appName`/`appLogo` move to `uiOptions.appInfo.{name,logo,logoRounded}`, `customStyleOptions` is replaced by `uiOptions.theme`/`themes`, and `selectorOptions` keeps only `walletType` and `enabledWalletTypes`. Pin `@4` unless you are targeting 5.x deliberately, and match `@proton/link` to the same major.
+> **Version note:** `@proton/web-sdk` **5.1.0 is GA** and is the npm `latest`. The examples in this module still use the **4.x** options shape. 5.x changes that shape: `appName`/`appLogo` move to `uiOptions.appInfo.{name,logo,logoRounded}`, `customStyleOptions` is replaced by `uiOptions.theme`/`themes`, and `selectorOptions` keeps only `walletType` and `enabledWalletTypes`. Either major works. Install `@proton/web-sdk@5.1.0 @proton/link@5.1.0`, or pin both to `@4` to use the examples below unchanged. Always keep `@proton/link` on the same major as the SDK.
+>
+> ```typescript
+> // 5.x options shape
+> const { link, session } = await ProtonWebSDK({
+>   linkOptions: { chainId, endpoints: ['https://proton.eosusa.io'] },
+>   transportOptions: { requestAccount: 'mycontract' },
+>   selectorOptions: { enabledWalletTypes: ['proton', 'webauth', 'anchor'] },
+>   uiOptions: { appInfo: { name: 'My dApp', logo: 'https://myapp.com/logo.png', logoRounded: true } }
+> });
+> ```
 
 ## Quick Start
 
@@ -59,7 +68,7 @@ const result = await session.transact({
 | `endpoints` | `string[]` | Yes | Array of RPC endpoints (multiple for fault tolerance) |
 | `chainId` | `string` | No | Chain ID; if omitted it is fetched from the first endpoint's `get_info` |
 | `storage` | `LinkStorage` | No | Custom storage adapter |
-| `storagePrefix` | `string` | No | Prefix for storage keys (default: `proton-storage`) |
+| `storagePrefix` | `string` | No | Prefix for storage keys (default: `proton-storage`). Keys are `${storagePrefix}-${key}` in `localStorage` (`user-auth`, `wallet-type`, link sessions) |
 | `restoreSession` | `boolean` | No | Restore previous session without wallet selector |
 
 ### transportOptions (required for mobile)
@@ -70,6 +79,18 @@ const result = await session.transact({
 | `requestStatus` | `boolean` | Show request status UI while signing (default: true) |
 
 > **Important**: Without `requestAccount`, the WebAuth mobile app will sign transactions but won't return to your browser. Always set this to your contract or dApp account name.
+
+> **Scope saved sessions with `storagePrefix` when one origin serves more than one chain or contract.** With the default prefix, every build on the same origin shares one saved session. A testnet build on `localhost` (or a preview URL) then restores a testnet session into a mainnet build, and the reverse. Derive the prefix from the chain and contract, and use the same value when you check for a saved session before loading the SDK:
+>
+> ```typescript
+> const storagePrefix = `myapp-${chainId.slice(0, 12)}-${contract}`;
+> const hasSession = !!localStorage.getItem(`${storagePrefix}-user-auth`);  // skip loading the SDK if false
+> await ProtonWebSDK({
+>   linkOptions: { chainId, endpoints, restoreSession: true, storagePrefix },
+>   transportOptions: { requestAccount: contract },
+>   uiOptions: { appInfo: { name: 'My dApp', logo: 'https://myapp.com/logo.png', logoRounded: true } },  // 5.x
+> });
+> ```
 
 ### selectorOptions (optional, 4.x shape)
 
@@ -476,6 +497,8 @@ async function safeTransact(actions: any[]) {
 }
 ```
 
+> **5.1.0 cancel and login shapes:** `ProtonWebSDK()` usually **returns** `{ error }` for a failed or cancelled login instead of throwing, and it can resolve with no `session` at all, so check `res?.session` before you destructure it. `@proton/link` cancels throw an error with `code` `'E_CANCEL'` or `'E_WALLET_TYPE'`. The WebAuth browser link rejects with the bare string `'Closed'`, or `'Trying to login'` when a login replaces a pending transaction. None of these contain "User cancelled". Treat anything that mentions broadcast, network, timeout or connection as an **unknown** outcome, not a cancel, and re-read chain state before you offer to sign again.
+
 ---
 
 ## Mobile Wallet Support
@@ -584,8 +607,47 @@ Safari iOS blocks popups by default, which prevents the WebAuth browser wallet f
 
 ### Recommended Versions
 
-- `@proton/web-sdk@^4.4.1` (4.x line; 5.x changes the options shape — see the version note at the top)
-- `@proton/link` — match the major your `@proton/web-sdk` depends on (`^4.4.1` for web-sdk 4.x); do not pin `3.2.3-x`
+- `@proton/web-sdk@5.1.0` with `@proton/link@5.1.0` (current GA, 5.x options shape: see the version note at the top), or
+- `@proton/web-sdk@^4.4.1` with `@proton/link@^4.4.1` (4.x options shape used by the examples in this module)
+- Keep `@proton/link` on the same major as `@proton/web-sdk`. Do not pin `3.2.3-x`
+
+### Login and transact in separate clicks
+
+The WebAuth browser wallet opens its signing window from inside `session.transact()`. Browsers allow that window only during a user gesture. If one click handler awaits the `ProtonWebSDK(...)` login and then calls `session.transact()`, the gesture has expired by the time signing starts, and the browser blocks the popup. This happened on a testnet claim flow: the first attempt silently failed to open the wallet.
+
+```typescript
+// ✗ One click: login, then transact. The signing popup gets blocked
+claimBtn.onclick = async () => {
+  const { session } = await ProtonWebSDK({ /* ... */ });
+  await session.transact({ actions }, { broadcast: true });
+};
+
+// ✓ Two clicks: sign in first, then call transact before any other await
+signInBtn.onclick = async () => {
+  ({ session } = await ProtonWebSDK({ /* ... */ }));
+};
+claimBtn.onclick = () => {
+  const pending = session.transact({ actions }, { broadcast: true });  // first thing in the handler
+  const hint = setTimeout(() => showHint('No wallet window? Check your popup blocker.'), 4000);
+  pending.finally(() => clearTimeout(hint));
+};
+```
+
+Rules that follow from this:
+
+- **Nothing async before `transact()` in the click**, not even a table read or a "still eligible?" check. Do reads before the click (or on a timer), and let the contract's `check()` reject stale cases.
+- **A blocked window never settles the promise.** In web-sdk 5.1.0 the WebAuth browser link calls `window.open()` synchronously inside `transact()`. A blocked popup leaves the link's `childWindow` `null`, and the returned promise stays pending forever. You can detect that right after the call:
+
+  ```typescript
+  const pending = session.transact({ actions }, { broadcast: true });
+  if (link && 'childWindow' in link && link.childWindow == null) {
+    pending.catch(() => {});  // it never settles; don't leave it unhandled
+    showHint('The WebAuth window was blocked. Allow popups for this site, then tap again.');
+  }
+  ```
+
+  `link` is the one `ProtonWebSDK()` returned. Links without a `childWindow` property (Anchor, the WebAuth mobile app) skip the check.
+- **A window the user closes by hand also leaves the promise pending** in 5.1.0. The promise rejects only when webauth.com posts its own close message. If your UI waits on `transact()`, add a timeout, and treat the outcome as *unknown* rather than *cancelled*: webauth.com broadcasts the transaction itself, so a closed window doesn't prove nothing was signed. Re-read on-chain state before you offer to sign again.
 
 ---
 
@@ -604,6 +666,7 @@ Safari iOS blocks popups by default, which prevents the WebAuth browser wallet f
 ### Session Not Restoring
 
 If `restoreSession: true` doesn't restore the session:
+- Check that `storagePrefix` (and `chainId`) match the values used at login. A different prefix looks in different `localStorage` keys
 - Clear localStorage keys starting with `proton-storage` or your custom prefix
 - Ensure you're on the same domain where the session was created
 - Check if storage is being blocked (private browsing, etc.)

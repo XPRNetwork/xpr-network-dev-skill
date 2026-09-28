@@ -112,8 +112,11 @@ proton account myaccount -t
 # Get raw account data (JSON)
 proton account myaccount -r
 
-# Create new account
+# Create new account (email verification)
 proton account:create newaccount
+
+# Create an account paid for by one you control (no email; prints no private key when -k is given)
+proton account:create-funded newaccount -c creator -k PUB_K1_xxxxx -o backupowner
 
 # Update account permissions
 proton permission myaccount
@@ -170,6 +173,17 @@ proton contract:clear mycontract -w
 proton contract:enableinline mycontract
 ```
 
+> **`contract:set` is interactive and can half-succeed** (`@proton/cli` 0.1.98):
+> - It asks `Continue? (y/N)` and has no `--yes` flag. In a script or agent session, pipe the answer in:
+>   `echo y | proton contract:set mycontract ./assembly/target`. Without it, nothing is deployed.
+> - It can publish the ABI even when the node rejects the WASM, and it still **exits 0**. An account in that
+>   state reports every action as `"status": "executed"`, but nothing runs. Check the code hash after every
+>   deploy. All zeros means there is no code:
+>
+>   ```bash
+>   curl -s -X POST https://proton.eosusa.io/v1/chain/get_code_hash -d '{"account_name":"mycontract"}'
+>   ```
+
 ### Deployment Workflow
 
 ```bash
@@ -188,8 +202,9 @@ proton account mycontract
 # 5. Buy RAM if needed
 proton ram:buy mycontract mycontract 200000 -p mycontract@active
 
-# 6. Deploy
-proton contract:set mycontract ./assembly/target
+# 6. Deploy (answers the Continue? prompt), then confirm code_hash is not all zeros
+echo y | proton contract:set mycontract ./assembly/target
+curl -s -X POST https://proton.eosusa.io/v1/chain/get_code_hash -d '{"account_name":"mycontract"}'
 
 # 7. Initialize
 proton action mycontract init '{"owner":"mycontract"}' mycontract
@@ -304,8 +319,58 @@ proton transaction:get TRANSACTION_ID
 # Note: bare `proton transaction '<json>'` does not JSON.parse its argument
 # and fails on a JSON string — use transaction:push for raw transactions.
 
+# transaction:push needs the {"actions":[...]} wrapper. For a file that holds
+# only one action's data, use `proton action` instead:
+proton action CONTRACT ACTION "$(cat data.json)" AUTHORIZATION
+
 # Push to specific endpoint
 proton transaction:push TX_JSON -u https://proton.eosusa.io
+```
+
+### Scripting the CLI for bulk or high-value jobs
+
+Checked against `@proton/cli` 0.1.98 and 0.1.99 source, and used for a 3,333-asset AtomicAssets mint on testnet
+and mainnet (September 2026):
+
+- **Errors still exit 0.** `transaction:push`, `action` and `contract:set` catch the error, print it (in red,
+  with a hint) and return normally. A script must parse stdout. Success prints a JSON result with a 64-hex
+  `"transaction_id"`. No `transaction_id` means the command failed or its outcome is unknown.
+- **Transactions expire after 3,000 s (50 min).** The CLI signs with `expireSeconds: 3000` and TAPOS from the
+  last irreversible block. A transaction whose outcome you don't know can still land for up to 50 minutes.
+- **Header fields you supply win.** `@proton/js` builds the header as `{ ...generatedHeader, ...yourJson }`, so
+  `expiration`, `ref_block_num` and `ref_block_prefix` in the JSON you pass to `transaction:push` replace the
+  CLI's. Set your own short expiration (for example head block time + 10 min) and record it *before* you
+  push. You then know exactly when an unanswered push can no longer land.
+- **The error text tells you whether anything was broadcast.** The CLI calls `get_info`, `get_block` /
+  `get_block_info`, `get_abi` / `get_raw_abi` and `get_required_keys` before it signs and sends. An error
+  that names one of those read calls (and not `push_transaction` / `send_transaction`) means nothing was
+  sent, so it is safe to retry at once, on another endpoint. A node rejection (`assertion failure`,
+  `transaction net usage is too high`, `tx_cpu_usage_exceeded`, `billed CPU time`, `ram_usage_exceeded`,
+  `missing authority`) means the node ran it and refused it. It was not accepted, so it can't land later. Fix
+  the cause and retry. **Anything else is ambiguous**: a timeout, a dropped connection, or output with no
+  `transaction_id` and no recognizable error.
+- **Never resend an ambiguous push blindly.** Read the state the transaction was supposed to change. If it
+  changed, the push landed. If it didn't, wait until an endpoint's `last_irreversible_block_time` is past the
+  transaction's expiration, read the state again **from that same endpoint**, and only then resend. With the
+  CLI's default header that is a ~52-minute pause; with your own 10-minute expiration it is ~13 minutes.
+- **The selected network is global.** `proton chain:set` writes the CLI's shared config, so another shell or
+  agent session can switch it under your script. Run `proton chain:get` (or compare `get_info.chain_id` from
+  the endpoint you pass with `-u`) immediately before every signing step, and stop on a mismatch.
+
+A resend-safe loop for a job whose state you can read, for example AtomicAssets `issued_supply` for a
+template (see `nfts-atomicassets.md` → *Bulk minting safely*):
+
+```text
+for each batch, in order:
+  read the state; if this batch is already reflected, skip it
+  if an earlier attempt for this batch is unresolved: resend only after an endpoint's LIB time > its expiration
+  build the tx with your own expiration + TAPOS; append {batch, expiration} to a journal and fsync
+  proton transaction:push '<tx json>' -u <endpoint>   # parse stdout, ignore the exit code
+  poll the state for ~30 s:
+    moved as expected               -> journal "done"
+    unchanged + pre-broadcast error -> journal "not sent", retry on the next endpoint
+    unchanged + node rejection      -> journal "rejected", stop and fix the cause
+    anything else                   -> journal "ambiguous", stop (the next run waits out the expiry)
 ```
 
 ---
@@ -346,10 +411,16 @@ proton ram:buy BUYER RECEIVER BYTES -p BUYER@active
 # Example: Buy 150KB for contract
 proton ram:buy mycontract mycontract 150000 -p mycontract@active
 
+# Buy a CPU/NET plan from the `resources` contract: deposit first, then buyplan
+# (the deposit is credited to the sender; plan_index 0 = Basic, 100 XPR, 744 h)
+proton action eosio.token transfer '{"from":"myaccount","to":"resources","quantity":"100.0000 XPR","memo":""}' myaccount
+proton action resources buyplan '{"account":"myaccount","plan_index":0,"plan_quantity":1}' myaccount
+proton account myaccount   # NET/CPU limits should now be far above the free allowance
+
 # List faucets
 proton faucet
 
-# Claim from faucet (testnet)
+# Claim from faucet (testnet: 1,000 test XPR per account per 24 h)
 proton faucet:claim XPR myaccount
 ```
 
@@ -452,6 +523,15 @@ proton ram:buy mycontract mycontract 150000 -p mycontract@active
 Some commands show errors but still succeed. Always check the transaction link in output:
 - `"Error: Inline actions already enabled"` may appear on successful deploy
 
+In scripts, **don't grep the output for `error`**. Successful transactions include `"error_code": null`. Look
+for `"status": "executed"` to confirm success, and for `assertion failure` to catch a contract rejection. Don't
+rely on the exit code: the CLI prints RPC and contract errors and still exits 0, and `contract:set` can exit 0
+after a failed WASM deploy (see *Deploy Contract* and *Scripting the CLI for bulk or high-value jobs*).
+
+Even `"status": "executed"` with a `transaction_id` only means the endpoint you pushed to ran the
+transaction. It can still fail to land. See `troubleshooting.md` → *A push returned a transaction_id, but
+nothing changed on chain*.
+
 ### ram:buy Syntax
 
 Authorization uses `-p` flag, not positional:
@@ -474,7 +554,7 @@ proton ram:buy BUYER RECEIVER BYTES BUYER
 | Set testnet | `proton chain:set proton-test` |
 | Add key | `proton key:add` |
 | Account info | `proton account NAME -t` |
-| Deploy contract | `proton contract:set ACCOUNT ./assembly/target` |
+| Deploy contract | `echo y \| proton contract:set ACCOUNT ./assembly/target` |
 | Execute action | `proton action CONTRACT ACTION 'JSON' AUTH` |
 | Query table | `proton table CONTRACT TABLE` |
 | Buy RAM | `proton ram:buy PAYER RECV BYTES -p PAYER@active` |

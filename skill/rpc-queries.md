@@ -390,6 +390,11 @@ const { rows } = await rpc.get_table_rows({
 
 ### Pagination
 
+**`limit` is a maximum, not a promise.** A node can return fewer rows than you asked for and set
+`more: true`. On XPR testnet (September 2026) a single `get_table_rows` call on AtomicAssets `assets` returned
+about 1,000 rows even with a much larger `limit`. A monitor that read the table in one call reported 2,300
+of 3,300 NFTs as "not owned". Always loop on `more` / `next_key`, even when `limit` is larger than the table:
+
 ```typescript
 async function getAllRows(code: string, table: string) {
   const allRows: any[] = [];
@@ -1202,7 +1207,7 @@ const rating = await safeQuery(
 ## Performance Tips
 
 1. **Use specific bounds** - Don't query entire tables when you need specific rows
-2. **Paginate large results** - Use `limit` and `next_key` for large tables
+2. **Paginate large results** - Loop on `more` / `next_key`; a node can return fewer rows than `limit` (~1,000 per call observed)
 3. **Cache when possible** - Oracle prices, user profiles don't change frequently
 4. **Use secondary indexes** - Query by indexed fields when primary key isn't suitable
 5. **Multiple endpoints** - Implement fallback endpoints for reliability

@@ -182,6 +182,11 @@ This ensures randomness cannot be predicted or manipulated.
 
 **Repository:** https://github.com/XPRNetwork/proton-rng
 
+> **Testnet:** the `rng` oracle is live on testnet as well. In testnet rehearsals (2026-09-24/25) the
+> `receiverand` callback arrived about **1–3 s** after the requesting transaction. The callback is a separate
+> transaction, so a frontend has to poll your contract's table (or watch Hyperion) for the result; the
+> request transaction's receipt doesn't contain it. Plan UI waits and test timeouts for that delay.
+
 ### Integration Steps
 
 #### 1. Request Random Number
@@ -575,6 +580,48 @@ class SlotMachine extends Contract {
    const result2 = random_value.data[4] % 52;     // Card draw
    ```
 
+5. **Give each request its own id, and ignore stale callbacks**
+
+   If a request can be cancelled and retried (an admin "unstick" action, a timeout, a user cancel), the
+   first request's callback can still arrive later. When `assoc_id` is a row key that gets reused, such as
+   an account's `.N` or `availablePrimaryKey` after a row was deleted, that late callback completes the
+   *retry* with the wrong randomness, or runs twice. Use a counter that only ever grows as `assoc_id`, store
+   it on the pending row, and have the callback act only when the ids match:
+
+   ```typescript
+   // in the request action
+   cfg.requests += 1;
+   const reqId = cfg.requests;            // never reused, even after a cancel
+   this.claims.store(new Claim(account, PENDING, reqId), this.receiver);  // secondary index on req_id
+   sendRequestRandom(this.receiver, reqId, signingValue);
+
+   // in receiverand
+   requireAuth(RNG_CONTRACT);
+   const c = this.claims.getBySecondaryU64(assoc_id, 0);
+   if (c == null || c.req_id != assoc_id || c.status != PENDING) return;  // cancelled or stale: ignore
+   ```
+
+   On testnet (September 2026) a claim and its cancel were pushed in one transaction, then the claim was
+   retried: the first request's callback was ignored and exactly one result was delivered, for the retry.
+
+6. **Don't `check()` on normal paths in `receiverand`**
+
+   `receiverand` runs inline inside the oracle's `setrand` transaction. An assertion there aborts the whole
+   `setrand`, so the result is never recorded and your pending row waits forever. Return early for
+   anything unexpected (unknown or stale `assoc_id`, an empty pool) and keep `check()` for invariants that
+   really mean the contract is broken. `requireAuth(RNG_CONTRACT)` is the exception: it only fails for
+   callers other than `rng`.
+
+7. **Don't let the recipient re-roll**
+
+   If the callback sends the result inline (a token or an NFT) to an account that has contract code, that
+   contract's notification handler can see which item it is getting and abort the transfer. That aborts
+   `setrand` too, so the pick is thrown away and the request stays pending. At best the request is stuck;
+   if your contract lets stuck requests be cancelled and retried, the recipient can reject results until it
+   gets one it likes. For draws where that matters, only auto-send to accounts with no code (see
+   `smart-contracts.md` → *Known SDK bug: `getCodeHash()`* for a working `get_code_hash` check). For
+   accounts with code, record the result and let anyone push a separate `deliver` action later.
+
 ### Alternative: Block-Based Randomness
 
 For lower-stakes applications, you can use block data for pseudo-randomness:
@@ -695,4 +742,7 @@ proton table oracles data
 - [ ] Validate `rng` is the caller in `receiverand`
 - [ ] Generate unique signing values
 - [ ] Handle pending game state
-- [ ] Test on testnet first
+- [ ] Use a never-reused request id as `assoc_id`; ignore callbacks that don't match the pending row
+- [ ] No `check()` on normal paths in `receiverand`
+- [ ] Don't auto-send results to accounts with contract code if they could reject and re-roll
+- [ ] Test on testnet first (the `rng` oracle is live there)

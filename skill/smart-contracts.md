@@ -525,6 +525,66 @@ proton contract:set mycontract ./assembly/target
 proton action mycontract init '{"owner":"mycontract"}' mycontract
 ```
 
+> **Check that the code actually landed.** `contract:set` can publish the ABI while the node rejects the WASM, and
+> it still exits 0. An account with an ABI but no code accepts every action and reports `"status": "executed"`,
+> but nothing runs. Before calling any action, check the code hash. All zeros means the account has no code:
+>
+> ```bash
+> curl -s -X POST https://api-xprnetwork-test.saltant.io/v1/chain/get_code_hash \
+>   -d '{"account_name":"mycontract"}'
+> # {"account_name":"mycontract","code_hash":"0000…0000"}  ← no WASM deployed
+> ```
+>
+> Non-interactive deploys also need `echo y |`. See `cli-reference.md` → *Deploy Contract*.
+
+### Known SDK bug: `getCodeHash()` breaks `setcode` (proton-tsc 0.3.58)
+
+`as-chain` (the runtime under `proton-tsc` 0.3.58) declares the `get_code_hash` intrinsic with **3** parameters
+`(account: u64, struct_version: u32, packed_result_ptr: usize): usize`. The node's intrinsic takes **4**:
+`(u64 account, u32 struct_version, char* packed_result, u32 packed_result_len) -> u32`. A contract that
+references `getCodeHash` compiles and passes the local test VM, but the chain rejects the WASM at `setcode`:
+
+```
+wrong type for imported function get_code_hash
+```
+
+Workaround: declare the import yourself with the right signature and parse the packed result. The intrinsic
+returns the packed size. For `struct_version` 0 the result is **43 bytes** with **no account field**:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | `struct_version` (varuint32, `0`) |
+| 1 | 8 | `code_sequence` (u64, fixed width) |
+| 9 | 32 | `code_hash` (checksum256, all zeros = no code) |
+| 41 | 1 | `vm_type` |
+| 42 | 1 | `vm_version` |
+
+This version ran in a claim contract on XPR testnet and mainnet (September 2026): plain WebAuth accounts read as
+"no code" and accounts with a deployed contract read as "has code". It returns true only when the account
+definitely has no contract code. Any unexpected length or version counts as "has code", so a caller that uses this
+check to decide "safe to push an inline transfer to this account" fails safe:
+
+```ts
+@external("env", "get_code_hash")
+declare function get_code_hash_4(account: u64, struct_version: u32, packed_result: usize, packed_result_len: u32): u32;
+
+const CODE_HASH_RESULT_LEN: u32 = 43;
+
+function hasNoCode(account: Name): bool {
+  const buf = new Array<u8>(64);
+  const len = get_code_hash_4(account.N, 0, buf.dataStart, 64);
+  if (len != CODE_HASH_RESULT_LEN || buf[0] != 0) return false;  // unexpected shape: treat as "has code"
+  for (let i = 9; i < 41; i++) if (buf[i] != 0) return false;    // code_hash bytes
+  return true;
+}
+```
+
+Don't parse an `account` field or a varuint `code_sequence` out of this result: neither exists in the packed
+layout, and either assumption reads the hash from the wrong offset.
+
+The local test VM does not check intrinsic signatures, so this class of bug only appears on a real node. Deploy
+to testnet early. Don't wait until the tests pass. See `testing-debugging.md`.
+
 ---
 
 ## AssemblyScript Gotchas

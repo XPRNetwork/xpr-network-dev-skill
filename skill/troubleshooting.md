@@ -25,6 +25,11 @@ See [RPC Queries — All-Numeric Account Names](rpc-queries.md#critical-all-nume
 
 **Cause**: Transaction not signed by required account.
 
+**Wording differs between the chain and the local test VM.** A node reports `missing authority of X`.
+`@proton/vert` (the local test VM) reports `missing required authority X`. Code that parses errors, and test
+assertions shared between vert and testnet, should match both, for example
+`/missing (required )?authority( of)? X/`.
+
 **Solutions**:
 ```typescript
 // Check authorization matches signer
@@ -81,6 +86,36 @@ data: {
   nonce: Date.now()
 }
 ```
+
+### A push returned a `transaction_id`, but nothing changed on chain
+
+**Symptom**: The push response has a `transaction_id` (often `"status": "executed"` too), but the state it
+should have changed never changes, and a block explorer never shows the transaction.
+
+**Cause**: The API node you pushed to doesn't produce blocks. It executes the transaction speculatively
+against *its own* view of head state, answers with the result, and relays the transaction. If the producer's
+state differs, the producer can reject the transaction, and it disappears without an error reaching you. On
+XPR testnet (September 2026) a transaction with two contract calls returned an id from one endpoint. A config
+change pushed through a different endpoint moments earlier had already reached the producer, so the second
+call asserted there, and the whole transaction was dropped.
+
+**Solution**: Treat a push response as "submitted", never as "done". Confirm by reading the state the
+transaction changes (a table row, a balance, an `issued_supply`), or by finding the transaction in a block.
+For anything that matters, wait until that block is irreversible. Before resending after an unclear result,
+see `cli-reference.md` → *Scripting the CLI for bulk or high-value jobs*. Pushing related transactions through
+the same endpoint makes this less likely, but doesn't prevent it.
+
+### "transaction net usage is too high: X > Y"
+
+**Cause**: The account has used up its NET allowance. Every account gets a free allowance (~450 KB per 24 h
+observed on testnet, September 2026), and a bulk job from one account can use it up in hours. For example,
+20-asset AtomicAssets mints with rich data are ~5.6 KB each. `Y` is the NET the account has left, so the
+same transaction starts failing partway through a job.
+
+**Solution**: Buy a `resources` plan for the signing account: transfer XPR to `resources` first, then call
+`resources::buyplan` (see `staking-governance.md` → *Buying a Resource Plan*). The node rejected this
+transaction, so it can't land later: retrying after the purchase is safe. Before a long job, check
+`net_limit.available` from `get_account` before each transaction.
 
 ### "insufficient objective cpu resources" / "was executing for too long" (`tx_cpu_usage_exceeded`)
 
@@ -172,6 +207,15 @@ const { rows } = await rpc.get_table_rows({
   limit: 1000  // Get all to verify data exists
 });
 ```
+
+### `get_table_rows` returns only part of a table
+
+**Cause**: `limit` is a maximum. A node can return fewer rows (about 1,000 per call was observed on XPR
+testnet with a larger `limit`) and set `more: true`. Code that reads one page misses the rest without any
+error.
+
+**Solution**: Loop until `more` is false, passing `next_key` as the next `lower_bound`. See
+`rpc-queries.md` → *Pagination*.
 
 ### "ECONNREFUSED" / Network errors
 
@@ -278,6 +322,21 @@ Alternatively, users can:
 
 **Developer tip**: Show a help message after several seconds of stuck "processing" to guide users.
 
+### Signing popup blocked right after login
+
+**Symptom**: A single "Claim" / "Buy" button logs the user in and then calls `session.transact()`. Login works,
+but the WebAuth signing window never opens, or the browser shows a blocked-popup notice.
+
+**Cause**: The click handler waits for the `ProtonWebSDK(...)` login to finish. By then the user gesture has
+expired, so the browser treats the signing window as an unsolicited popup and blocks it.
+
+**Solution**: Use two clicks. A "Sign in" button creates the session, and a separate "Claim" button calls
+`session.transact()` as the first thing in its handler, before any `await`. That includes reads: fetch
+anything you need before the click, not inside it. When the browser still blocks the window, the
+`transact()` promise never settles. With web-sdk 5.1.0 you can detect that at once (the link's `childWindow`
+is `null` right after `transact()` returns), or show a "check your popup blocker" hint after a few seconds.
+See `web-sdk.md` → *Login and transact in separate clicks*.
+
 ### "Cannot read property of null"
 
 **Cause**: Session not initialized.
@@ -322,6 +381,25 @@ proton contract:abi mycontract
 
 # Redeploy with updated ABI
 proton contract:set mycontract ./assembly/target -a
+```
+
+### "wrong type for imported function get_code_hash"
+
+**Cause**: The contract calls `getCodeHash()` from `proton-tsc` 0.3.58. `as-chain` declares the intrinsic with 3
+parameters, and the node expects 4. The contract builds and passes local tests, but `setcode` rejects the WASM.
+
+**Solution**: Declare the 4-parameter import yourself and parse the packed result. See `smart-contracts.md` →
+*Known SDK bug: `getCodeHash()` breaks `setcode`*.
+
+### Actions report `"status": "executed"` but nothing happens
+
+**Cause**: The account has an ABI but no code. `contract:set` can publish the ABI after the node rejects the
+WASM, and it still exits 0. A non-interactive `contract:set` without `echo y |` deploys nothing.
+
+**Check**:
+```bash
+curl -s -X POST https://proton.eosusa.io/v1/chain/get_code_hash -d '{"account_name":"mycontract"}'
+# code_hash of all zeros = no WASM. Fix the WASM error and redeploy.
 ```
 
 ### "Contract already deployed"

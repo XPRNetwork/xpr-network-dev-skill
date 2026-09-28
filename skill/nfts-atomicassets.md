@@ -167,6 +167,9 @@ async function getAsset(assetId: string) {
 }
 ```
 
+> `template_mint` in API responses is back-filled: it reads 0 for a fresh mint until the indexer catches up.
+> See *`template_mint` Is Back-Filled by the API Indexer* below.
+
 ---
 
 ## Marketplace Queries
@@ -238,7 +241,11 @@ const actions = [{
     authorized_accounts: [author],
     notify_accounts: [],
     market_fee: 0.05,  // 5%
-    data: []  // Collection metadata
+    data: [            // Collection metadata (collection_format: name, img, description, url, ...)
+      { key: 'name', value: ['string', 'My Collection'] },
+      { key: 'img', value: ['string', 'QmXxx...'] },   // img is typed `ipfs`, but the variant is 'string'
+      { key: 'description', value: ['string', 'What this collection is'] }
+    ]
   }
 }];
 
@@ -295,6 +302,11 @@ const actions = [{
 
 await session.transact({ actions }, { broadcast: true });
 ```
+
+> **Template `immutable_data` keys must exist in the schema.** A template with a key that the schema doesn't
+> define (for example `series` or `description` when the schema has neither) fails. If every asset in the
+> collection is unique and carries its own attributes in the mint's `immutable_data`, create the template with
+> `immutable_data: []`, a real `max_supply`, and `burnable: false`.
 
 ### 4. Mint Asset
 
@@ -499,6 +511,11 @@ const data = [
 | `double` | `['float64', number]` |
 | `bool` | `['uint8', 0 or 1]` |
 
+> **`ipfs` attributes serialize as `string`.** In action data the variant type is the serialization type, not the
+> schema type. A collection's `img` is `{"key":"img","value":["string","Qm…"]}`. Passing `["ipfs","Qm…"]` fails
+> client-side with `type "ipfs" is not valid for variant`. The contract base58-decodes the value, so it must be a
+> **CIDv0** (`Qm…`), not a CIDv1 (`bafy…`).
+
 ---
 
 ## Common Patterns
@@ -562,7 +579,9 @@ async function batchMint(
     }
   }));
 
-  // Note: Transaction size limits apply (~100 mints per tx)
+  // Note: Transaction size limits apply (~100 mints per tx without per-asset data).
+  // With rich immutable_data, keep batches small (20 mints ≈ 5.6 KB NET) and see
+  // "Bulk minting safely" before minting a numbered or limited collection.
   await session.transact({ actions }, { broadcast: true });
 }
 ```
@@ -614,6 +633,23 @@ async function uploadToIPFS(file: File): Promise<string> {
 | Mint asset | ~151 + data size |
 
 RAM is paid by the minter/creator, not the recipient.
+
+Measured (September 2026, one collection, so treat these as rough numbers):
+
+| Measurement | Value |
+|---|---|
+| RAM per asset, 3,333 assets with ~15 short string/uint attributes each in the mint's `immutable_data` (empty template data) | **~280 bytes** (933,540 B on the minter for 3,333) |
+| CPU per 10-asset `mintasset` transaction with ~10 string attributes each | ~470–610 µs |
+| NET per 20-asset `mintasset` transaction, same data | **~5.6 KB** |
+
+That RAM is almost double the ~151-byte base above. Budget RAM from your real attribute payload, not from the
+base cost, and measure it on testnet with the real data before you buy RAM on mainnet.
+
+**Bulk mints run out of free NET.** At ~5.6 KB per 20-asset batch, the free NET allowance (~450 KB per 24 h
+on testnet in September 2026) lasted about 80 batches. The next batch was rejected with
+`transaction net usage is too high: 5533 > 4192`. Buy a `resources` plan for the minter before a large mint:
+deposit XPR to `resources`, then call `buyplan` (see `staking-governance.md` → *Buying a Resource Plan*). The
+Basic plan was enough for 167 batches of 20.
 
 ### Marketplace Fees
 
@@ -715,9 +751,68 @@ When minting many NFTs in sequence, you'll hit RAM limits. Buy RAM proactively:
 proton action eosio buyram '{"payer":"youraccount","receiver":"youraccount","quant":"500.0000 XPR"}' youraccount
 ```
 
-Each NFT asset costs ~151 bytes. For 500 NFTs, budget ~75,000 bytes of RAM.
+Each NFT asset costs ~151 bytes plus its data. For 500 NFTs with no per-asset data, budget ~75,000 bytes of
+RAM; with ~15 per-asset attributes, budget closer to ~280 bytes per asset (see *RAM Costs*).
 
 If a mint fails with "has X bytes has Y bytes", buy more RAM and retry. Don't retry the failed mint without buying RAM first.
+
+When you push pre-built batch files from the CLI, `proton transaction:push` expects the full
+`{"actions":[…]}` wrapper. A file that holds only one action's data goes through
+`proton action atomicassets mintasset "$(cat data.json)" youraccount` instead.
+
+### Bulk Minting Safely (numbered or limited collections)
+
+AtomicAssets doesn't know that your "edition 17" is unique. If a batch is sent twice, you get two edition 17s,
+and with `burnable: false` you can never remove the extra ones. The usual cause is a retry after a push whose
+outcome was unclear. The proton CLI makes that easy to get wrong: it exits 0 on errors, and a transaction it
+signed can still land up to 50 minutes later (see `cli-reference.md` → *Scripting the CLI for bulk or
+high-value jobs*). This pattern minted 3,333 editions on testnet (including a deliberate `kill -9` mid-run and a
+real ambiguous push) and then on mainnet, with no duplicates:
+
+1. **One template per numbered set, and mint in edition order.** The template's `issued_supply` then *is* the
+   progress counter. Before each batch, read it from `atomicassets::templates` (scope = collection). If it
+   already covers the batch, skip the batch. If it isn't exactly `first_edition - 1`, stop and reconcile.
+2. **Journal every attempt before you push it**, with the batch range and the transaction's expiration. Set
+   the expiration yourself (for example head block time + 10 min) in the transaction JSON, because the CLI's
+   default is 3,000 s. Append the line and fsync it before the CLI runs, so a crash can't leave an attempt off
+   the record.
+3. **Let the chain decide the outcome, not the CLI.** After the push, poll `issued_supply` for up to ~30 s. If
+   it moved to the batch's last edition, the batch landed. If it didn't move and the CLI's error named a
+   pre-broadcast read call (`get_info`, `get_abi`, ...), nothing was sent: retry on another endpoint. If the
+   node rejected it (`net usage is too high`, CPU, RAM, `assertion failure`), fix the cause and retry. In
+   every other case, record it as **ambiguous and stop**.
+4. **Resend an ambiguous batch only after it can no longer land**: when an endpoint's
+   `last_irreversible_block_time` is past the journaled expiration, read `issued_supply` from *that same
+   endpoint*. If the batch is there, mark it done. If the supply is unchanged, it's safe to resend.
+5. **One runner at a time.** Take an exclusive lock file per chain + collection + template. After a crash,
+   check that no runner is still alive before you delete the lock. Never delete the journal.
+6. **Check resources before each batch** (NET, CPU, free RAM from `get_account`), so you stop cleanly instead
+   of collecting rejections halfway through.
+7. **Verify afterwards against your source data**: one asset per edition, correct owner, byte-identical
+   `immutable_data`, and asset-id order == edition order.
+
+On mainnet all 167 batches of 20 landed at the first attempt. On testnet the same code met one real ambiguous
+push (the CLI printed an error without a `transaction_id` and exited 0; the batch had not landed) and one
+interruption after a batch had landed but before it was journaled. The supply check skipped the landed batch,
+and the expiry wait blocked a resend of the ambiguous one until it could no longer land.
+
+### `template_mint` Is Back-Filled by the API Indexer
+
+The AtomicAssets API returns `template_mint` as 0 for freshly minted assets and fills in the
+real mint number later. Don't treat `0` as an error, and don't use `template_mint` to check mint order right
+after a mint. `asset_id` values increase in mint order, so sort by `asset_id` instead:
+
+```typescript
+// Edition order check that works immediately after minting
+const assets = /* all assets of the template, paged with limit=1000&page=N&sort=asset_id&order=asc */;
+assets.sort((a, b) => (BigInt(a.asset_id) < BigInt(b.asset_id) ? -1 : 1));
+assets.forEach((a, i) => {
+  if (Number(a.immutable_data.edition) !== i + 1) throw new Error(`asset ${a.asset_id} is out of order`);
+});
+```
+
+The API also lags the chain by a few seconds or more. Before you verify, wait until the number of assets it
+returns equals the template's on-chain `issued_supply`.
 
 ### Airdrop Patterns
 
