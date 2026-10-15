@@ -655,6 +655,8 @@ Now you can sign mintasset with the limited `minter` key.
 
 ### Rate Limiting
 
+Use this for API calls **and** for chain writes. The default chain write budget for an autonomous process is 6 transactions per minute per account, one in flight; see [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
+
 ```typescript
 class RateLimiter {
   private timestamps: number[] = [];

@@ -263,7 +263,7 @@ Claude will load specialized modules on demand based on your queries.
 - **SimpleDEX** — token launch with bonding curves + AMM graduation
 - Trading bot patterns (grid bot, market maker)
 - Perpetual futures architecture and building blocks
-- **LOAN protocol** — supply, borrow, liquidations
+- **LOAN protocol** — supply, borrow, health factor (liquidation mechanics deliberately omitted)
 
 ### Server-Side Agents
 
@@ -315,7 +315,8 @@ Run `./scripts/validate-skill.sh` before opening a PR. It checks:
 6. No personal account references
 7. No active links to retired explorers (`protonscan.io`, `proton.bloks.io`)
 8. MetalX endpoints use the correct `/dex/v1/` prefix
-9. Inventory of skill files with line counts (for manual review)
+9. No liquidation how-to content (policy since 2.11.0; see `safety-guidelines.md` → Network Etiquette)
+10. Inventory of skill files with line counts (for manual review)
 
 If you're touching a reference module, also include the curl / RPC call you used to verify the change in the PR description — the skill prioritizes verified-against-mainnet over pattern-matched-against-training-data.
 
