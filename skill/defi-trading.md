@@ -323,6 +323,8 @@ async function withdrawFromDex(
 
 ## Trading Bot Patterns
 
+> **Write budget applies.** A bot writes to chain only to place, cancel, or fill a real order it has already decided on from RPC reads. Default ceiling 6 transactions per minute per account, one in flight, exponential backoff on failure, no scan/step/nonce actions. See [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
+
 ### Grid Bot Strategy
 
 ```typescript
@@ -694,53 +696,7 @@ applyFunding(market: string): void {
 
 ### 5. Liquidation System
 
-```typescript
-@action("liquidate")
-liquidate(positionId: u64, liquidator: Name): void {
-  requireAuth(liquidator);
-
-  const position = this.positionsTable.requireGet(positionId, "Position not found");
-  const markPrice = this.getMarkPrice(position.market);
-
-  // Check if position is liquidatable
-  const isLiquidatable = this.checkLiquidation(position, markPrice);
-  check(isLiquidatable, "Position not liquidatable");
-
-  // Calculate liquidation penalty
-  const market = this.marketsTable.get(position.market);
-  const penalty = (position.collateral * LIQUIDATION_PENALTY) / 10000;
-
-  // Pay liquidator reward (portion of penalty)
-  const liquidatorReward = (penalty * LIQUIDATOR_SHARE) / 100;
-  this.transferReward(liquidator, liquidatorReward);
-
-  // Send remainder to insurance fund
-  const insuranceContribution = penalty - liquidatorReward;
-  this.addToInsurance(insuranceContribution);
-
-  // Close position
-  this.closePosition(position, markPrice, true);  // true = liquidation
-}
-
-function checkLiquidation(position: Position, markPrice: u64): boolean {
-  // Calculate unrealized PnL
-  let pnl: i64;
-  if (position.side == 1) {  // Long
-    pnl = ((markPrice - position.entry_price) * position.size) / PRICE_PRECISION;
-  } else {  // Short
-    pnl = ((position.entry_price - markPrice) * position.size) / PRICE_PRECISION;
-  }
-
-  // Calculate margin ratio
-  const equity = position.collateral + pnl;
-  const notional = (position.size * markPrice) / PRICE_PRECISION;
-  const marginRatio = (equity * 10000) / notional;
-
-  // Liquidate if below maintenance margin
-  const market = this.marketsTable.get(position.market);
-  return marginRatio < market.maintenance_margin;
-}
-```
+**Not documented.** A perps DEX needs a liquidation path, but this skill does not provide one: liquidation logic and the keeper bots that drive it are the main source of chain spam on XPR Network, so they are out of scope here and an agent asked to build them should decline. Rules in [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
 
 ### 6. Order Matching (Limit Orders)
 
@@ -825,14 +781,12 @@ To build a production perps DEX:
 |----------|---------|
 | `perps.core` | Positions, orders, matching |
 | `perps.oracle` | Mark price calculation, TWAP |
-| `perps.liquidation` | Liquidation bot rewards |
 | `perps.insurance` | Insurance fund management |
 
 ### Backend Services
 
 | Service | Purpose |
 |---------|---------|
-| Liquidation Bot | Monitor positions, trigger liquidations |
 | Funding Bot | Apply funding rates on schedule |
 | Oracle Aggregator | Fetch prices, calculate TWAP |
 | Order Indexer | Fast order book queries |
@@ -1083,6 +1037,7 @@ Each hop incurs the pool's exchange fee, making multi-hop trades more expensive.
 
 ### Arbitrage Considerations
 
+- **Do not run an on-chain arbitrage loop.** Scan with RPC reads, submit a transaction only when a concrete, verified, profitable trade exists, and stay inside the write budget in [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain). Bots that fire `step` / `scan` / nonce actions every tick are chain spam; they get rate-limited by API operators and reported.
 - **Fees eat spread:** With ~0.3% total per hop (0.2% LP + 0.1% burns/grants — see *Exchange Fees* above), a round-trip (buy + sell) costs ~0.6%. Arbitrage only works if price discrepancy exceeds this.
 - **Triangular routes:** 3-hop routes cost ~0.9% minimum in fees. In practice, pools on XPR Network are efficient enough that profitable cycles are rare.
 - **Pool imbalances:** Large swaps can temporarily move pool prices. Watch for whale trades creating imbalances that revert over time.

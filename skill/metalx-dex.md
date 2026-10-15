@@ -933,6 +933,8 @@ Official open-source trading bot for automated trading on MetalX.
 
 **Repository:** https://github.com/XPRNetwork/dex-bot
 
+> **Write budget applies.** Configure the bot's interval and order counts so it stays inside the chain write budget (default 6 transactions per minute per account); it must never place or cancel orders in a tight loop. See [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
+
 ### Bot Types
 
 #### Grid Bot

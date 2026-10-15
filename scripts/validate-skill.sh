@@ -142,8 +142,19 @@ else
 fi
 echo ""
 
-# 9. List all skill files
-echo "9. Skill files for manual review:"
+# 9. Liquidation how-to must stay out (policy since 2.11.0 — see safety-guidelines.md → Network Etiquette)
+echo "9. Checking for liquidation how-to content..."
+LIQ=$(grep -rnE 'memo":"liquidate|getLiquidatableBorrows|@action\("liquidate"\)|scanliq' "$SKILL_DIR" --include="*.md" || echo "")
+if [ -z "$LIQ" ]; then
+    pass "No liquidation how-to content"
+else
+    fail "Liquidation how-to content found (deliberately out of scope):"
+    echo "$LIQ"
+fi
+echo ""
+
+# 10. List all skill files
+echo "10. Skill files for manual review:"
 echo "-----------------------------------"
 find "$SKILL_DIR" -name "*.md" -type f | sort | while read -r file; do
     LINES=$(wc -l < "$file")

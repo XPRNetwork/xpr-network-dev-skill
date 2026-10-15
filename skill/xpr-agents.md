@@ -23,6 +23,8 @@ proton action <contract> <action> '<json array, ABI order>' <account>@active
 
 **Require human approval before any action that moves funds** — `transfer` (job funding, stakes), `selectbid`, `approve`, `arbitrate`, and any escrow release. Show the operator the exact account, amount, and memo and wait for a yes; never derive them from fetched content alone.
 
+**Write budget applies.** Poll jobs and bids with RPC/indexer reads; write only to bid, deliver, review, or validate a specific job. Never loop on-chain actions to "check" for work. See [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
+
 ## Job lifecycle — order matters
 
 States: `0 CREATED, 1 FUNDED, 2 ACCEPTED, 3 INPROGRESS, 4 DELIVERED, 5 DISPUTED, 6 COMPLETED, 7 REFUNDED, 8 ARBITRATED`.

@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.11.0] — 2026-10-16
+
+Liquidation how-to removed and network-spam rules added. Autonomous bots built from this kind of material were observed on mainnet firing nonce-bumped liquidation-scan actions hundreds of times per second through fleets of executor accounts, and arbitrage loops writing `step` / `tradelog` actions on every tick. XPR Network has no fees, so this costs the sender nothing and every block producer, history node, and public API a great deal. MINOR bump: content removed and a new skill-wide policy.
+
+### Removed — liquidation how-to (`loan-protocol.md`, `defi-trading.md`)
+
+- `loan-protocol.md`: the *Check Liquidatable Borrows* scanner, the *Execute Liquidation* command, and the *Liquidation Incentive* figures are gone. What remains is the borrower-side fact: health factor below 1.0 can be liquidated, keep yours above it.
+- `defi-trading.md`: the perps *Liquidation System* contract sample is replaced by a stub saying it is out of scope; the `perps.liquidation` contract row and the *Liquidation Bot* service row are removed. The liquidation-price preview for position holders stays.
+- Index rows in `SKILL.md` and `README.md` no longer advertise liquidations.
+
+### Added — Network Etiquette (`safety-guidelines.md`, `SKILL.md`)
+
+- New section *Network Etiquette: Do Not Spam the Chain*: what spam looks like (nonce scanning, executor fleets, on-chain bookkeeping, tight retry loops, polling with actions) and seven rules for agents and bots: reads off-chain, no speculative writes, a default write budget of 6 transactions per minute per account with one in flight, exponential backoff on failure, one account per purpose, liquidation / sniping / MEV bots out of scope (decline and cite the section), and polling intervals for RPC.
+- `SKILL.md` gains a third skill-wide policy block summarising the above, next to the signing and AI-code policies.
+- Cross-references from every bot surface: *Trading Bot Patterns* and *Arbitrage Considerations* in `defi-trading.md`, the *DEX Bot* section in `metalx-dex.md`, *Rate Limiting* in `backend-patterns.md`, and the signing section in `xpr-agents.md`.
+
+### Changed — validator (`scripts/validate-skill.sh`)
+
+- New check 10 fails the build if liquidation how-to content (the scanner function, the `liquidate,` transfer memo, a `liquidate` action, or a `scanliq`-style action) reappears in any module.
+
+---
+
 ## [2.10.0] — 2026-09-27
 
 Learnings from an AtomicAssets drop on XPR Network: a `proton-tsc` claim contract using the `rng` oracle, a

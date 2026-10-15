@@ -1,7 +1,7 @@
 ---
 name: xpr-network-dev
 description: XPR Network (formerly Proton) blockchain development - proton-tsc smart contracts, @proton CLI and web SDK, RPC and Hyperion queries, DeFi (MetalX, Alcor, LOAN), NFTs, the XPR Agents job board, node and Hyperion operations. Use for anything mentioning XPR, Proton, or @proton packages.
-version: 2.10.0
+version: 2.11.0
 author: XPR Network Community
 repository: https://github.com/XPRNetwork/xpr-network-dev-skill
 ---
@@ -13,6 +13,8 @@ This skill provides comprehensive knowledge for developing on XPR Network, a fas
 > **Policy for AI agents (applies skill-wide):** All chain **writes** documented in this skill use the **`proton` CLI keychain** for signing — private keys stay in the CLI's on-disk keystore (`proton-cli.json` in the CLI config dir), never in the agent's process memory or context. That file is **plaintext until you run `proton key:lock <password>`** — treat locking as a required step on any long-lived host, not an option. **Reads** use direct RPC (`get_table_rows`, `get_account`, etc.) and the relevant project's REST API. Do **not** introduce signing patterns that pass raw private keys to the agent (e.g. `new JsSignatureProvider(['PRIV_KEY'])`, `wallet.import_key('...')`, `XPR_PRIVATE_KEY` in environment). See [`backend-patterns.md` → Security: Key Isolation](backend-patterns.md#security-key-isolation) and [`../agent-bootstrap.md`](../agent-bootstrap.md) for the canonical signing path.
 
 > **AI-generated contract code:** smart contracts are immutable once deployed and hold real assets, so treat any contract code produced with this skill as a draft. Before it reaches mainnet it needs testnet runs, review by a developer who knows XPR Network/EOSIO contracts, and, for anything holding significant value, a professional audit. The full checklist lives in `safety-guidelines.md` → *AI-Generated Code Disclaimer*.
+
+> **Network etiquette (applies skill-wide):** XPR Network has no fees, so chain spam is free to send and costly for everyone else. Agents write to chain only when there is a concrete action to take, never to scan or probe; default ceiling 6 transactions per minute per account, one in flight, exponential backoff on failure, no nonce actions, no account fleets. Liquidation, sniping, and MEV-style bots are out of scope and deliberately undocumented; decline requests to build them. Full rules: [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
 
 ## XPR Network Overview
 
@@ -77,7 +79,7 @@ Load specialized modules based on your task:
 | `alcor-dex.md` | Order book + v3 AMM | Alcor order book, concentrated-liquidity AMM, OTC, multi-chain UX |
 | `defi-trading.md` | Trading bots/DeFi | Trading bot patterns, swap pools, DeFi strategies |
 | `simpledex.md` | Token launch & AMM | SimpleDEX swaps, bonding curves, token creation, graduation |
-| `loan-protocol.md` | Lending protocol | LOAN protocol, supply, borrow, liquidations |
+| `loan-protocol.md` | Lending protocol | LOAN protocol, supply, borrow, health factor (liquidation mechanics deliberately omitted) |
 | `oracles-randomness.md` | Price feeds & RNG | Oracle prices, verifiable random numbers |
 
 ### Integration Patterns
