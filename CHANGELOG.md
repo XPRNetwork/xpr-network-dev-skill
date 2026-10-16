@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.12.0] — 2026-10-16
+
+XPR Agents module brought up to date. The module was last verified against `@xpr-agents/sdk` 0.2.7 / `@xpr-agents/openclaw` 0.5.4 (v2.6.0); npm is now at 0.5.2 / 0.8.7. Every action the module already documented still matches the live ABIs field for field, so nothing was wrong, but the escrow contract and the plugin had grown a great deal the module did not mention. Verified against the installed packages' type declarations, the four mainnet ABIs, and xpragents.com/llms.txt. MINOR bump: new reference content.
+
+### Added — `xpr-agents.md`
+
+- **Beyond the happy path:** re-deliver, `revise` (at most twice), `timeout` / `accpttimeout` / `cancel`, `agentcancel` (full refund), `withdrawbid`, milestones (`addmilestone` / `submitmile` / `approvemile`), direct hire.
+- **Job messages:** `askclient` / `answer`, limits, and the etiquette that matters (ask once, never deliver a placeholder to ask a question).
+- **Services:** fixed-price listings end to end: `svcfee:` deposit + `listsvc` in one transaction, `buy:<id>[:notes]`, `updatesvc` / `delistsvc` / `relistsvc` / `refundsvcfee`, input forms (`setsvcinput` / `svcinput`), featured placement via `boost:<id>`, what `sample_uri` must be, and how to find the job a purchase created.
+- **Reviews / validation / arbitration** lifecycle actions: `job_hash` = job id string, review disputes, `challenge`, `unstake` / `withdraw`, `activatearb` / `deactarb` / `unstakearb` / `withdrawarb` / `cancelunstk`, and why the reference runner only accepts trusted arbitrators.
+- **Stopping an agent:** `setstatus false` plus runner shutdown, what inactive blocks, how money is never stranded, and why there is no unregister.
+- **Tooling** rewritten for openclaw 0.8.7 / sdk 0.5.2: 89 tools + 13 skills, the two ways to run an agent and the harness install path (`openclaw plugins install`, `env.vars.XPR_ACCOUNT`, `tools.alsoAllow`, `inspect --runtime`), every plugin env var with its default, `confirmHighRisk`, housekeeping mode, the owner-permission lockdown command, the SDK's four registries and `A2AClient`, and Shellbook (contract `shellbook`, 15 tools).
+
+### Changed
+
+- `backend-patterns.md`: `createCliSession` documents the `maxTransferAmount` cap; the install line distinguishes a Node process from an OpenClaw harness; the `.env` template lists the plugin's optional settings with defaults.
+- `scripts/agent-bootstrap.sh` pins `@xpr-agents/openclaw` 0.8.7 and `@xpr-agents/sdk` 0.5.2 (were 0.8.1 / 0.4.0); the validator now checks both packages resolve.
+- Tool count corrected from 75 to 89 in `agent-bootstrap.md` and `README.md`; index rows updated.
+- Also folded in from the xpr-agents maintainers' review of the same drift: the 10 XPR `valfee:` validation deposit (confirmed on chain), escrow caps (5 unfunded jobs per client, 20 milestones / 20 messages per job, 10 listings), the SDK 0.5.0 A2A signing change (`audience` + `chainId` in the digest, `targetAccount` / `chainId` required on `A2AClient`), reputation scaled by `min(reviews, 5) / 5`, `ENABLE_MSIG_APPROVE`, `AGENT_MODE` values and `start.sh` defaults, indexer endpoint shapes and the 100 req/min limit, and an explicit **OpenClaw 2026.9.x is not verified** note. The bootstrap pins `@proton/js` 28.1.2 to match the `^28` range both packages declare.
+
+---
+
 ## [2.11.0] — 2026-10-16
 
 Liquidation how-to removed and network-spam rules added. Autonomous bots built from this kind of material were observed on mainnet firing nonce-bumped liquidation-scan actions hundreds of times per second through fleets of executor accounts, and arbitrage loops writing `step` / `tradelog` actions on every tick. XPR Network has no fees, so this costs the sender nothing and every block producer, history node, and public API a great deal. MINOR bump: content removed and a new skill-wide policy.

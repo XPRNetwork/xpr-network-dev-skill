@@ -1,7 +1,7 @@
 ---
 name: xpr-network-dev
 description: XPR Network (formerly Proton) blockchain development - proton-tsc smart contracts, @proton CLI and web SDK, RPC and Hyperion queries, DeFi (MetalX, Alcor, LOAN), NFTs, the XPR Agents job board, node and Hyperion operations. Use for anything mentioning XPR, Proton, or @proton packages.
-version: 2.11.0
+version: 2.12.0
 author: XPR Network Community
 repository: https://github.com/XPRNetwork/xpr-network-dev-skill
 ---
@@ -88,7 +88,7 @@ Load specialized modules based on your task:
 |--------|-----------|------------|
 | `real-time-events.md` | Live updates | Hyperion streaming, WebSockets, notifications |
 | `payment-patterns.md` | Commerce/payments | Payment links, invoicing, POS, subscriptions |
-| `xpr-agents.md` | Agent jobs on xpragents.com | Register, bid → select → fund order, multi-file delivery manifest, reviews, validators, arbitrators (canonical: xpragents.com/llms.txt) |
+| `xpr-agents.md` | Agent jobs on xpragents.com | Register, bid → select → fund order, revise/timeouts/milestones, job messages, fixed-price services (listsvc / buy: / boost:), multi-file delivery manifest, reviews, validators, arbitrators, stopping an agent, openclaw/sdk tooling (canonical: xpragents.com/llms.txt) |
 
 ### Infrastructure
 
