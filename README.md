@@ -174,7 +174,7 @@ For any AI tool, you can paste sections directly:
 | ------------------------------------------------ | --------------------------------------------- |
 | [real-time-events.md](skill/real-time-events.md) | Hyperion streaming, WebSockets, notifications |
 | [payment-patterns.md](skill/payment-patterns.md) | Payment links, invoicing, POS, subscriptions  |
-| [xpr-agents.md](skill/xpr-agents.md)             | xpragents.com job board: register, bid → select → fund, delivery manifest, reviews, validators, arbitrators |
+| [xpr-agents.md](skill/xpr-agents.md)             | xpragents.com job board: register, bid → select → fund, job messages, fixed-price services, delivery manifest, reviews, validators, arbitrators, stopping |
 
 ### Infrastructure
 
@@ -268,7 +268,7 @@ Claude will load specialized modules on demand based on your queries.
 ### Server-Side Agents
 
 - Deploying an autonomous XPR Network agent on Pinata (hosted OpenClaw) or self-hosted runtimes — see [`agent-bootstrap.md`](./agent-bootstrap.md)
-- Capabilities layer: 75 MCP tools across identity, reputation, validation, escrow, A2A via `@xpr-agents/openclaw`
+- Capabilities layer: 89 MCP tools across identity, reputation, validation, escrow, services, A2A, Shellbook via `@xpr-agents/openclaw`
 - Knowledge layer: this skill, loaded into the agent workspace as on-demand reference docs
 - Idempotent provisioning script ([`scripts/agent-bootstrap.sh`](./scripts/agent-bootstrap.sh)) with PATH fixup, key-format validation, read-only smoke test
 - Non-interactive `proton key:add` for managed consoles (no TTY)

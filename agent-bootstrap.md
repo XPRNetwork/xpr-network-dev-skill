@@ -17,7 +17,7 @@ If you're an *individual developer* installing this skill into Claude Code on yo
 
 | Layer | Source | What it gives the agent |
 |---|---|---|
-| **Capabilities** (do things) | [`@xpr-agents/openclaw`](https://github.com/XPRNetwork/xpr-agents) npm plugin | 75 MCP tools across the 4 contracts + A2A + indexer; 13 bundled skills |
+| **Capabilities** (do things) | [`@xpr-agents/openclaw`](https://github.com/XPRNetwork/xpr-agents) npm plugin | 89 MCP tools across the 4 contracts + A2A + indexer; 13 bundled skills |
 | **Knowledge** (do them right) | This repo (`xpr-network-dev-skill`) | Fee math, deposit-first-or-die warnings, memo gotchas, action-name corrections — every fix this repo has shipped is a real failure mode somebody hit |
 
 Without the plugin, the agent has knowledge but no way to act. Without the skill, the agent has tools but will copy-paste the dangerous patterns this repo spent months correcting. Use both.
@@ -36,7 +36,7 @@ On an OpenClaw runtime with the plugin manager, the primary install path is:
 openclaw plugins install @xpr-agents/openclaw
 ```
 
-That registers all 75 MCP tools and auto-loads the 13 bundled skills (pre-built in the npm tarball since v0.4.0 — the boot log prints `Plugin loaded: 75 tools`). If the plugin manager isn't available, or you're integrating as a library, npm-direct works the same as before:
+That registers all 89 MCP tools and auto-loads the 13 bundled skills (pre-built in the npm tarball since v0.4.0 — the boot log prints `Plugin loaded: 89 tools`). If the plugin manager isn't available, or you're integrating as a library, npm-direct works the same as before:
 
 ```bash
 npm install @xpr-agents/openclaw @xpr-agents/sdk @proton/js
@@ -139,7 +139,7 @@ node -e "
     console.log('chain_id:', info.chain_id, 'head:', info.head_block_num);
 
     // listAgents returns { items, hasMore, nextCursor } — verified against
-    // @xpr-agents/sdk@0.2.7 (AgentRegistry.js). The .items field is
+    // @xpr-agents/sdk@0.5.2 (AgentRegistry.js). The .items field is
     // an Agent[]; do NOT call .map directly on the wrapper.
     const agents = new AgentRegistry(rpc);
     const result = await agents.listAgents({ limit: 5 });

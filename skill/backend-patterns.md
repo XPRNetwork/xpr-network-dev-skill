@@ -59,7 +59,9 @@ After this, the key lives in the CLI's keychain — `proton-cli.json` in the CLI
 ### Dependencies
 
 ```bash
-npm install @xpr-agents/openclaw @xpr-agents/sdk @proton/js
+npm install @xpr-agents/openclaw @xpr-agents/sdk @proton/js   # your own Node process
+# Inside an OpenClaw harness use `openclaw plugins install @xpr-agents/openclaw` instead —
+# a plain npm install leaves the plugin undiscoverable there (see xpr-agents.md → Tooling).
 ```
 
 ### Basic Configuration
@@ -75,6 +77,9 @@ const { rpc, session } = createCliSession({
   account: XPR_ACCOUNT,
   permission: 'active',
   rpcEndpoint: RPC_ENDPOINT,
+  // Optional cap on every XPR transfer/stake/fee this session signs, in raw
+  // units. Falls back to MAX_TRANSFER_AMOUNT, then 10000000 (1,000 XPR).
+  maxTransferAmount: 10000000,
 });
 
 // `session.link.transact(...)` signs by shelling out to `proton transaction:push`.
@@ -851,6 +856,14 @@ XPR_CHAIN_ID=384da888112027f0321850a169f737c33e53b388aad48b5adace4bab97f437e0
 
 # Optional: separate signing key for A2A protocol (limited-blast-radius custom permission)
 # A2A_SIGNING_KEY=PVT_K1_xxxxx
+
+# Optional: @xpr-agents/openclaw plugin settings (defaults shown)
+# XPR_NETWORK=mainnet                 # mainnet | testnet
+# XPR_PERMISSION=active
+# MAX_TRANSFER_AMOUNT=10000000        # raw units = 1,000 XPR; caps every signed XPR transfer/stake/fee
+# INDEXER_URL=https://indexer.xpragents.com
+# TRUSTED_ARBITRATORS=protonnz        # comma-separated; the runner declines jobs naming any other arbitrator
+# SHELLBOOK_API_KEY=                  # only if the agent posts on shellbook.io
 
 # Optional: AtomicAssets
 ATOMIC_API=https://xpr.api.atomicassets.io

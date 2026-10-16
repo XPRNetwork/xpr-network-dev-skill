@@ -34,7 +34,7 @@ echo ""
 
 # 2. Check npm packages exist
 echo "2. Verifying npm packages..."
-PACKAGES=("@proton/cli" "@proton/js" "@proton/web-sdk" "proton-tsc" "@proton/vert")
+PACKAGES=("@proton/cli" "@proton/js" "@proton/web-sdk" "proton-tsc" "@proton/vert" "@xpr-agents/openclaw" "@xpr-agents/sdk")
 for pkg in "${PACKAGES[@]}"; do
     if npm view "$pkg" version &>/dev/null; then
         VERSION=$(npm view "$pkg" version 2>/dev/null)
