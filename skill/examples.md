@@ -28,7 +28,10 @@ class Config extends Table {
   constructor(
     public paused: boolean = false,
     public fee_percent: u8 = 5,           // 5% total fee
-    public resolver_percent: u8 = 2,       // 2% to resolver
+    // 2% to resolver. A resolver bot reads `challenges` via RPC and submits exactly
+    // one `resolve` per resolvable challenge, under the limits in safety-guidelines →
+    // Network Etiquette (rule 3); it never races or retries a failed resolve in a loop.
+    public resolver_percent: u8 = 2,
     public min_stake: u64 = 100000,        // 10.0000 XPR
     public max_stake: u64 = 1000000000,    // 100000.0000 XPR
     public min_duration: u32 = 300,        // 5 minutes
@@ -131,6 +134,9 @@ private readOraclePrice(feedIndex: u64): u64 {
   return <u64>(data.aggregate.f64Value * 100000000.0);  // 8 decimals
 }
 
+// A resolver bot reads `challenges` via RPC and submits exactly one `resolve` per
+// resolvable challenge, under the limits in safety-guidelines → Network Etiquette
+// (rule 3); it never races or retries a failed resolve in a loop.
 @action("resolve")
 resolve(challengeId: u64, resolver: Name): void {
   requireAuth(resolver);
@@ -163,6 +169,9 @@ const XPR = new Symbol("XPR", 4);
 const TOKEN = Name.fromString("eosio.token");
 
 // Called from the resolve action; `resolver` is the account that signed it.
+// A resolver bot reads `challenges` via RPC and submits exactly one `resolve` per
+// resolvable challenge, under the limits in safety-guidelines → Network Etiquette
+// (rule 3); it never races or retries a failed resolve in a loop.
 private distributePrize(challenge: Challenge, resolver: Name): void {
   const config = this.configSingleton.get();
 
@@ -533,9 +542,13 @@ setOwner(newOwner: Name): void {
 ### Expiry Cleanup
 
 ```typescript
+// Anyone may call this, but callers read `challenges` via RPC first and call it only
+// when an expired entry exists. The final check() makes an idle call fail, so it is
+// never included in a block. Without it a public no-op write is a spam vector any
+// account fleet can land every block at the contract's expense
+// (safety-guidelines.md#network-etiquette-do-not-spam-the-chain, rules 2 and 8).
 @action("cleanup")
 cleanup(limit: u8): void {
-  // Anyone can call to clean up expired entries
   const now = currentTimeSec();
   let removed: u8 = 0;
   let scanned: u16 = 0;
@@ -563,6 +576,8 @@ cleanup(limit: u8): void {
 
     cursor = next;
   }
+
+  check(removed > 0, "Nothing to clean up");
 }
 ```
 
@@ -625,6 +640,23 @@ const { rows } = await rpc.get_table_rows({
 
 // Filter out deleted in frontend
 const visiblePosts = rows.filter(p => !p.is_deleted);
+```
+
+### Rendering on-chain strings
+
+Every string read from chain — memo text, `content`, `image_url`, token or NFT names, NFT attributes —
+is attacker-controlled input: anyone can write one for 1 XPR. Render text with `textContent` or your
+framework's default escaping, never `innerHTML` / `dangerouslySetInnerHTML`. Allow-list image sources
+to `https:` URLs and bare IPFS CIDs (`Qm…` / `bafy…`), and reject everything else, including
+`javascript:` and `data:` URLs.
+
+```typescript
+function safeImageUrl(raw: string): string | null {
+  if (/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z2-7]{50,})$/.test(raw)) return `https://ipfs.io/ipfs/${raw}`;
+  try { const u = new URL(raw); return u.protocol === 'https:' ? u.href : null; } catch { return null; }
+}
+// textEl.textContent = post.content;             // never textEl.innerHTML = post.content
+// img.src = safeImageUrl(post.image_url) ?? '';  // null -> show nothing
 ```
 
 ### Get Leaderboard

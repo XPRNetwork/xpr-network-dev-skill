@@ -9,7 +9,7 @@ XPR Network provides several ways to get real-time updates:
 | Method | Use Case | Latency |
 |--------|----------|---------|
 | **Hyperion Streaming** | Action/delta streams | ~1-2 seconds |
-| **Polling** | Simple integrations | 1-30 seconds |
+| **Polling** | Simple integrations | 3-60 seconds (rule 7: ≥3 s latency-sensitive, ≥10 s otherwise) |
 | **State History Plugin** | Full node operators | Real-time |
 
 ---
@@ -161,17 +161,20 @@ class ActionPoller {
   private lastTimestamp: string = '';
   private pollInterval: number;
   private running: boolean = false;
+  private backoffs = 0;
 
   constructor(
     private account: string,
     private filter: string | undefined,
-    intervalMs: number = 5000
+    intervalMs: number = 10_000   // rule 7: ≥10 s; ≥3 s only when latency actually matters
   ) {
-    this.pollInterval = intervalMs;
+    this.pollInterval = Math.max(intervalMs, 3_000);
     this.lastTimestamp = new Date().toISOString();
   }
 
-  start(callback: (actions: any[]) => void): void {
+  // `lib` is Hyperion's last irreversible block from the same response — use it
+  // for finality checks instead of a separate get_info per batch.
+  start(callback: (actions: any[], lib?: number) => void): void {
     this.running = true;
     this.poll(callback);
   }
@@ -180,7 +183,7 @@ class ActionPoller {
     this.running = false;
   }
 
-  private async poll(callback: (actions: any[]) => void): Promise<void> {
+  private async poll(callback: (actions: any[], lib?: number) => void): Promise<void> {
     while (this.running) {
       try {
         const url = new URL('https://proton.eosusa.io/v2/history/get_actions');
@@ -194,10 +197,32 @@ class ActionPoller {
         }
 
         const response = await fetch(url);
+
+        if (response.status === 403) {
+          // Operator ban list. Retrying confirms you're a bot; hopping to another
+          // operator is rule 11 abuse. Stop and fix the traffic pattern.
+          console.error(`get_actions returned 403 from ${url.host} — stopping poller`);
+          this.stop();
+          return;
+        }
+        if (response.status === 429 || response.status === 503) {
+          // Back off on the same endpoint, honouring Retry-After (rule 4 / 11)
+          const retryAfter = parseInt(response.headers.get('Retry-After') || '0', 10);
+          const backoff = retryAfter > 0
+            ? retryAfter * 1000
+            : Math.min(60_000, this.pollInterval * Math.pow(2, this.backoffs++));
+          await this.sleep(backoff);
+          continue;
+        }
+        if (!response.ok) {
+          throw new Error(`get_actions HTTP ${response.status}`);
+        }
+        this.backoffs = 0;
+
         const data = await response.json();
 
         if (data.actions && data.actions.length > 0) {
-          callback(data.actions);
+          callback(data.actions, data.lib);
 
           // Update timestamp to latest action
           const lastAction = data.actions[data.actions.length - 1];
@@ -216,8 +241,8 @@ class ActionPoller {
   }
 }
 
-// Usage: Poll for incoming transfers
-const poller = new ActionPoller('myaccount', 'eosio.token:transfer', 3000);
+// Usage: Poll for incoming transfers (10 s default; stop() when done)
+const poller = new ActionPoller('myaccount', 'eosio.token:transfer');
 
 poller.start((actions) => {
   for (const action of actions) {
@@ -231,54 +256,70 @@ poller.start((actions) => {
 
 ### Poll for Table Changes
 
+Re-reading a whole table every few seconds to diff it is the number one abuse pattern on public endpoints (`rpc-queries.md` → Endpoint Etiquette). For updates and removals use Hyperion `get_deltas` or a stream (above). If you must poll a table, poll a **bounded slice keyed on what changed** — here, new rows since the last primary key seen — at 10 s or more (rule 7).
+
 ```typescript
-class TablePoller<T> {
-  private lastData: Map<string, T> = new Map();
+import { JsonRpc } from '@proton/js';
+
+const RPC_ENDPOINT = process.env.XPR_RPC_ENDPOINT || 'https://proton.eosusa.io';
+const rpc = new JsonRpc(RPC_ENDPOINT);   // also used by waitForConfirmation below
+
+class TablePoller<T extends { id: number | string }> {
+  private running = false;
+  private cursor: number | string | undefined;   // last primary key seen
+  private backoffs = 0;
 
   constructor(
     private contract: string,
     private table: string,
     private scope: string = contract,
-    private pollInterval: number = 5000
+    private pollInterval: number = 10_000,     // rule 7: ≥10 s for a background watcher
+    private pageSize: number = 50
   ) {}
 
-  async start(
-    onAdd: (row: T) => void,
-    onUpdate: (oldRow: T, newRow: T) => void,
-    onRemove: (row: T) => void,
-    getKey: (row: T) => string
-  ): Promise<void> {
-    while (true) {
+  stop(): void {
+    this.running = false;
+  }
+
+  async start(onNew: (row: T) => void): Promise<void> {
+    this.running = true;
+    while (this.running) {
       try {
-        const { rows } = await rpc.get_table_rows({
-          code: this.contract,
-          scope: this.scope,
-          table: this.table,
-          limit: 1000
+        // Raw fetch rather than rpc.get_table_rows so the HTTP status is visible
+        const response = await fetch(`${RPC_ENDPOINT}/v1/chain/get_table_rows`, {
+          method: 'POST',
+          body: JSON.stringify({
+            code: this.contract,
+            scope: this.scope,
+            table: this.table,
+            lower_bound: this.cursor,     // undefined on the first pass = start of table
+            limit: this.pageSize,
+            json: true
+          })
         });
 
-        const currentKeys = new Set<string>();
-
-        for (const row of rows) {
-          const key = getKey(row);
-          currentKeys.add(key);
-
-          const existing = this.lastData.get(key);
-          if (!existing) {
-            onAdd(row);
-          } else if (JSON.stringify(existing) !== JSON.stringify(row)) {
-            onUpdate(existing, row);
-          }
-
-          this.lastData.set(key, row);
+        if (response.status === 403) {
+          // Operator ban list: stop. Do not retry, do not hop endpoints (rule 11).
+          console.error(`get_table_rows returned 403 — stopping table poller`);
+          break;
         }
+        if (response.status === 429 || response.status === 503) {
+          // Back off on the same endpoint
+          const retryAfter = parseInt(response.headers.get('Retry-After') || '0', 10);
+          await new Promise(r => setTimeout(r, retryAfter > 0
+            ? retryAfter * 1000
+            : Math.min(60_000, this.pollInterval * Math.pow(2, this.backoffs++))));
+          continue;
+        }
+        if (!response.ok) throw new Error(`get_table_rows HTTP ${response.status}`);
+        this.backoffs = 0;
 
-        // Check for removed rows
-        for (const [key, row] of this.lastData) {
-          if (!currentKeys.has(key)) {
-            onRemove(row);
-            this.lastData.delete(key);
-          }
+        const { rows } = await response.json() as { rows: T[] };
+        for (const row of rows) {
+          // lower_bound is inclusive — skip the row we already reported
+          if (this.cursor !== undefined && String(row.id) === String(this.cursor)) continue;
+          onNew(row);
+          this.cursor = row.id;
         }
       } catch (error) {
         console.error('Table poll error:', error);
@@ -289,15 +330,11 @@ class TablePoller<T> {
   }
 }
 
-// Usage: Watch challenges table
-const challengePoller = new TablePoller('pricebattle', 'challenges');
+// Usage: watch for new challenges. Updates and removals: get_deltas or a stream.
+const challengePoller = new TablePoller<{ id: number }>('pricebattle', 'challenges');
 
-challengePoller.start(
-  (challenge) => console.log('New challenge:', challenge),
-  (old, updated) => console.log('Challenge updated:', old.id, '->', updated),
-  (challenge) => console.log('Challenge removed:', challenge.id),
-  (row) => String(row.id)
-);
+challengePoller.start((challenge) => console.log('New challenge:', challenge));
+// later: challengePoller.stop();
 ```
 
 ---
@@ -517,30 +554,44 @@ async function waitForConfirmation(
   timeoutMs: number = 30000
 ): Promise<boolean> {
   const startTime = Date.now();
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+  // Hyperion needs a moment to index the block: first look after ~2 s, then
+  // every 3 s (rule 7). Polling at 1 s only finds "not yet" faster.
+  await sleep(2000);
 
   while (Date.now() - startTime < timeoutMs) {
-    try {
-      const response = await fetch(
-        `https://proton.eosusa.io/v2/history/get_transaction?id=${txId}`
-      );
-      const data = await response.json();
+    const response = await fetch(
+      `https://proton.eosusa.io/v2/history/get_transaction?id=${txId}`
+    );
 
-      if (data.trx_id) {
-        // Transaction found
-        const info = await rpc.get_info();
-        const txBlockNum = data.actions[0]?.block_num;
-        const currentBlock = info.head_block_num;
-        const confirmedBlocks = currentBlock - txBlockNum;
-
-        if (confirmedBlocks >= confirmations) {
-          return true;
-        }
-      }
-    } catch (error) {
-      // Transaction not yet indexed, continue waiting
+    if (response.status === 403) {
+      throw new Error('get_transaction returned 403 — operator ban list; stop and fix the traffic pattern (rule 11)');
+    }
+    if (response.status === 429 || response.status === 503) {
+      const retryAfter = parseInt(response.headers.get('Retry-After') || '0', 10);
+      await sleep(retryAfter > 0 ? retryAfter * 1000 : 6000);   // back off on the same endpoint
+      continue;
+    }
+    if (response.status === 404) {
+      await sleep(3000);   // not indexed yet
+      continue;
+    }
+    if (!response.ok) {
+      throw new Error(`get_transaction HTTP ${response.status}`);   // don't swallow real errors
     }
 
-    await new Promise(r => setTimeout(r, 1000));
+    const data = await response.json();
+    if (data.trx_id) {
+      // Found — only now ask the chain where head is
+      const info = await rpc.get_info();
+      const txBlockNum = data.actions[0]?.block_num;
+      if (txBlockNum && info.head_block_num - txBlockNum >= confirmations) {
+        return true;
+      }
+    }
+
+    await sleep(3000);
   }
 
   return false;
@@ -718,9 +769,11 @@ Connection: `io('https://<hyperion>', { path: '/stream', transports: ['websocket
 
 | Use Case | Recommended Interval |
 |----------|---------------------|
-| Real-time UI | 1-3 seconds |
-| Background sync | 5-10 seconds |
+| Latency-sensitive (live UI, payment watcher) | 3 seconds minimum |
+| Background sync, table watchers | 10 seconds or more |
 | Analytics | 30-60 seconds |
+
+These are floors, not targets — [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain), rule 7. Never sub-second, and never a whole-table re-read to detect changes.
 
 ### Performance Tips
 
@@ -757,17 +810,18 @@ cd block-stream && bun install
 import { BlockStreamClient } from './index';   // from the cloned repo
 
 const client = new BlockStreamClient({
-  // SHIP is normally private (loopback or a tunnel); if a third party exposes
-  // one, use wss:// — plain ws:// is unencrypted and unauthenticated.
-  socketAddress: 'wss://proton-ship.eosusa.io:8080',
+  // SHIP is for self-hosted nodes only: your own nodeos with state_history_plugin,
+  // reached over loopback or a private tunnel. Public operators do not expose it.
+  // If it ever leaves the host, use wss:// — plain ws:// is unencrypted and unauthenticated.
+  socketAddress: 'wss://<your-ship-host>',
   contracts: {
     'eosio.token': {
       tables: ['accounts'],
       actions: ['transfer']
     },
     'pricebattle': {
-      tables: ['*'],      // All tables
-      actions: ['*']      // All actions
+      tables: ['challenges'],           // name what you handle; '*' floods the processor
+      actions: ['create', 'resolve']
     }
   }
 });

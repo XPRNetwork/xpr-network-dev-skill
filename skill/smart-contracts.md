@@ -697,21 +697,30 @@ export class MyToken extends Contract {
     this.configSingleton.set(config, this.receiver);
   }
 
-  @action("deposit")
-  deposit(account: Name, amount: u64): void {
-    requireAuth(account);
+  // Deposits arrive as real eosio.token transfers, never as an action argument:
+  // the credited amount is what the chain actually moved.
+  @action("transfer", notify)
+  onTransfer(from: Name, to: Name, quantity: Asset, memo: string): void {
+    if (to != this.receiver) return;
+    if (this.firstReceiver != Name.fromString("eosio.token")) return;
+    if (quantity.symbol != new Symbol("XPR", 4)) return;
+    check(quantity.amount > 0, "Deposit must be positive");
 
     const config = this.configSingleton.get();
     check(!config.paused, "Contract is paused");
-    check(amount > 0, "Amount must be positive");
 
-    let balance = this.balanceTable.get(account.N);
+    let balance = this.balanceTable.get(from.N);
     if (!balance) {
-      balance = new Balance(account, 0, 0);
+      balance = new Balance(from, 0, 0);
     }
 
-    balance.amount += amount;
+    balance.amount += <u64>quantity.amount;
     balance.lastUpdate = currentTimeSec();
+    // RAM payer: a notify handler cannot bill RAM to `from` ("cannot charge RAM to
+    // other accounts during notify"), so the contract pays for the row. Anyone can
+    // therefore make you buy ~150 bytes per account with a dust transfer (RAM
+    // griefing). Mitigate with a minimum deposit, or require a prior `open(account)`
+    // action signed by the depositor that creates the row with `account` as payer.
     this.balanceTable.set(balance, this.receiver);
   }
 

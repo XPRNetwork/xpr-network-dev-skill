@@ -189,6 +189,8 @@ This ensures randomness cannot be predicted or manipulated.
 
 ### Integration Steps
 
+> **Write budget applies.** `requestrand` is a chain write and the callback is another; request a number only when a player action needs one, never on a timer or to pre-fill a pool of randoms. Poll your result table at ≥3 s. See [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
+
 #### 1. Request Random Number
 
 Your contract calls `requestrand` on the `rng` contract:
@@ -659,19 +661,7 @@ function pseudoRandom(seed: u64): u64 {
 
 ### Price Aggregation
 
-For critical applications, aggregate multiple sources:
-
-```typescript
-async function getAggregatedPrice(feedIndex: number): Promise<number> {
-  // Query on-chain oracle
-  const onChainPrice = await getOraclePrice(feedIndex);
-
-  // Could also fetch from external APIs and compare
-  // Reject if prices differ significantly
-
-  return onChainPrice;
-}
-```
+For critical applications, compare the on-chain feed against at least one independent source (read-only) and refuse to act when they diverge beyond a tolerance you set. A multi-source aggregation implementation is not shown here. Note that the `oracles` `data` row already carries the per-provider submissions in `points[]` alongside `aggregate`, so a divergence check across providers needs only the one table read.
 
 ### Staleness Check
 
@@ -723,7 +713,7 @@ proton table oracles data
 |--------|-------------|
 | `requestrand` | Request random number |
 | `setrand` | Oracle delivers random (internal) |
-| `killjobs` | Cancel pending requests |
+| `killjobs` | Cancel pending requests (admin — rng contract authority only) |
 | `pause` | Pause contract (admin) |
 
 ### Key Tables

@@ -180,6 +180,8 @@ curl -s -X POST https://proton.greymass.com/v1/chain/get_table_rows \
 
 ## Order Book Actions (`alcor`)
 
+> **Write budget applies.** Place, cancel, or swap only when a real decision has been made from RPC/API reads. Default ceiling 6 transactions per minute per account, one in flight, exponential backoff on failure; no cancel/replace loops. See [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
+
 Most operational actions live in the ABI, but **placing a limit order is done via `transfer` with a memo**, not a direct action.
 
 ### Place a limit order (transfer + memo)
@@ -371,7 +373,7 @@ curl -s "https://proton.alcor.exchange/api/v2/swap/pools" | \
   jq '.[] | select(.tokenA.symbol=="LOAN" and .tokenB.symbol=="XUSDC")'
 ```
 
-Pool ids are stable `uint64` values. Save the id; use it in swap memos and `addliquid` / `subliquid` calls.
+A pool id is a `uint64` that is stable for the life of that pool, so it is safe to use within a session for swap memos and `addliquid` / `subliquid` calls. Do not hard-code it: pools are retired and migrated (see *Pool IDs rotate* above), so re-resolve the id from `getRoute` or this endpoint at the start of each session.
 
 ---
 

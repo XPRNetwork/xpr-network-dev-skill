@@ -553,6 +553,10 @@ async function getAssetsWithMetadata(owner: string) {
 }
 ```
 
+Every field in `asset.data` (and `name` / `image` above) was written by whoever minted the asset. Treat it as
+untrusted input in the UI — see `examples.md` → *Rendering on-chain strings* for the escaping and image
+allow-list rules.
+
 ### Batch Mint Multiple Assets
 
 ```typescript
@@ -594,21 +598,31 @@ Store images and metadata on IPFS:
 
 ### Pinata (Recommended)
 
+The Pinata JWT lives only on your server, in `process.env`. **Never ship the JWT to the browser**: a
+bundled secret is readable by anyone, and lets them pin unlimited files on your account. Put the upload
+behind a server route that authenticates the caller and caps the file size.
+
 ```typescript
+// Server route (Node / Next.js API route): holds the secret, forwards the file to Pinata
+export async function POST(req: Request): Promise<Response> {
+  // TODO: authenticate the caller and reject oversized bodies before pinning
+  const formData = await req.formData();
+  const upstream = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${process.env.PINATA_JWT}` },
+    body: formData
+  });
+  const { IpfsHash } = await upstream.json();
+  return Response.json({ cid: IpfsHash });   // Use this as 'image' value
+}
+
+// Browser: post the file to your own route, never to Pinata directly
 async function uploadToIPFS(file: File): Promise<string> {
   const formData = new FormData();
   formData.append('file', file);
-
-  const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${PINATA_JWT}`
-    },
-    body: formData
-  });
-
-  const { IpfsHash } = await response.json();
-  return IpfsHash;  // Use this as 'image' value
+  const res = await fetch('/api/pin', { method: 'POST', body: formData });
+  const { cid } = await res.json();
+  return cid;
 }
 ```
 
@@ -835,15 +849,20 @@ const action = {
 };
 ```
 
-**Token holder airdrop** — query asset owners from AtomicAssets API:
+**Token holder airdrop** — query asset owners from AtomicAssets API. Both endpoints page (see the
+`limit=1000&page=N` note above): loop `page=1, 2, …` until a page returns fewer than `limit` rows, or you
+will drop every holder past the first page.
 ```
-GET https://xpr.api.atomicassets.io/atomicassets/v1/accounts?collection_name=COLLECTION
+GET https://xpr.api.atomicassets.io/atomicassets/v1/accounts?collection_name=COLLECTION&limit=1000&page=N
 ```
 Returns unique account names that own assets in the collection. To get owners of a specific template:
 ```
-GET https://xpr.api.atomicassets.io/atomicassets/v1/assets?template_id=TEMPLATE_ID&limit=100
+GET https://xpr.api.atomicassets.io/atomicassets/v1/assets?template_id=TEMPLATE_ID&limit=1000&page=N
 ```
-Extract unique `owner` fields, then mint to each.
+Extract unique `owner` fields, then mint in paced, journaled batches following the *Bulk Minting Safely*
+steps above (read `issued_supply` before each batch, journal, verify, one runner at a time). Mint only to
+holders who opted in (a claim action) or for collections you author; unsolicited mass-minting is wallet spam
+(`safety-guidelines.md#network-etiquette-do-not-spam-the-chain`, rule 8).
 
 ### IPFS Gateway Selection
 

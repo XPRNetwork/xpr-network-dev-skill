@@ -462,26 +462,32 @@ Wrapped tokens represent assets from other chains:
 ### Wrap Pattern
 
 ```typescript
-import { Table, TableStore, Name, Asset, Symbol, Utils, sha256,
+import { Table, TableStore, Name, Asset, Symbol, Utils, Checksum256, sha256,
          check, requireAuth } from 'proton-tsc';
 
 @table("usedhashes")
 class UsedHash extends Table {
   constructor(
-    public key: u64 = 0,          // first 8 bytes of sha256(txHash)
-    public tx_hash: string = ""   // full hash kept so a key collision is visible
+    public key: u64 = 0,                              // first 8 bytes of the digest: index only
+    public digest: Checksum256 = new Checksum256()    // full 32-byte sha256(txHash): the real identity
   ) { super(); }
 
   @primary
   get primary(): u64 { return this.key; }
 }
 
-// Table primary keys are u64, so a hex tx hash has to be folded down to one.
-private hashKey(txHash: string): u64 {
-  const digest = sha256(Utils.stringToU8Array(txHash)).data;
+// Table primary keys are u64, so the digest is folded to 8 bytes for the index. An
+// 8-byte fold is not collision-proof on its own, so the full digest is stored and
+// compared as well; a key hit with a different digest is a collision, not a replay.
+private hashDigest(txHash: string): Checksum256 {
+  return sha256(Utils.stringToU8Array(txHash));
+}
+
+private hashKey(digest: Checksum256): u64 {
+  const d = digest.data;
   let key: u64 = 0;
   for (let i = 0; i < 8; i++) {
-    key = (key << 8) | <u64>digest[i];
+    key = (key << 8) | <u64>d[i];
   }
   return key;
 }
@@ -494,15 +500,27 @@ wrap(account: Name, amount: u64, txHash: string): void {
   check(amount > 0, "Amount must be positive");
   check(txHash.length > 0, "Tx hash required");
 
-  // Verify tx hash hasn't been used — exists() takes a u64 primary key
-  const key = this.hashKey(txHash);
-  check(!this.usedHashes.exists(key), "Already wrapped");
+  // Verify tx hash hasn't been used — the u64 key finds the row, the digest decides
+  const digest = this.hashDigest(txHash);
+  const key = this.hashKey(digest);
+  const used = this.usedHashes.get(key);
+  if (used) {
+    check(used.digest != digest, "Already wrapped");
+    check(false, "Hash key collision: manual review required");
+  }
 
   // Record hash
-  this.usedHashes.store(new UsedHash(key, txHash), this.receiver);
+  this.usedHashes.store(new UsedHash(key, digest), this.receiver);
 
-  // Mint wrapped tokens
+  // Mint wrapped tokens: supply tracks every mint and burn, capped by max_supply
   const quantity = new Asset(amount, WRAPPED_SYMBOL);
+  const statsTable = new TableStore<CurrencyStats>(this.receiver, new Name(WRAPPED_SYMBOL.code()));
+  const stats = statsTable.requireGet(WRAPPED_SYMBOL.code(), "Token not found");
+  check(quantity.symbol == stats.max_supply.symbol, "Symbol mismatch");
+  check(stats.supply.amount + quantity.amount <= stats.max_supply.amount, "Would exceed max supply");
+  stats.supply.amount += quantity.amount;
+  statsTable.update(stats, this.receiver);
+
   this.addBalance(account, quantity, this.receiver);
 }
 
@@ -516,8 +534,12 @@ unwrap(account: Name, quantity: Asset, destinationAddress: string): void {
   check(quantity.symbol == WRAPPED_SYMBOL, "Wrong token");
   check(destinationAddress.length > 0, "Destination address required");
 
-  // Burn wrapped tokens
+  // Burn wrapped tokens and take them out of circulating supply
   this.subBalance(account, quantity);
+  const statsTable = new TableStore<CurrencyStats>(this.receiver, new Name(WRAPPED_SYMBOL.code()));
+  const stats = statsTable.requireGet(WRAPPED_SYMBOL.code(), "Token not found");
+  stats.supply.amount -= quantity.amount;
+  statsTable.update(stats, this.receiver);
 
   // Emit event for bridge to process
   // (Bridge monitors this and releases original tokens)
@@ -540,9 +562,30 @@ Submit your listing request there; voters decide. Once a pool exists for your to
 
 ### Batch Transfer Script
 
+An airdrop is a bulk job: it runs on testnet first with the same list (rule 10), signs with a
+linked `airdrop` permission rather than the issuer's `active` key, pushes one batch per ~10 s
+(well inside the 6-writes-per-minute budget, `safety-guidelines.md#network-etiquette-do-not-spam-the-chain` rule 3), journals every batch
+before the push, and verifies each batch landed by reading state back — the same discipline as
+`nfts-atomicassets.md` → *Bulk Minting Safely*.
+
 ```typescript
+import { appendFileSync } from 'fs';
+import { createCliSession } from '@xpr-agents/openclaw';
+
+// Signer: a named `airdrop` permission linked to `TOKEN_CONTRACT::transfer`
+// (accounts-permissions.md → "Use Permission Linking"), never the issuer's active key.
+const ISSUER = process.env.XPR_ACCOUNT!;
+const { rpc, session } = createCliSession({
+  account: ISSUER,
+  permission: 'airdrop',
+  rpcEndpoint: process.env.XPR_RPC_ENDPOINT || 'https://proton.eosusa.io',
+});
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const journal = (line: object) => appendFileSync('airdrop.journal', JSON.stringify(line) + '\n');
+
 async function airdrop(
-  recipients: Array<{ account: string; amount: string }>,
+  recipients: Array<{ account: string; amount: string }>,  // amount: "10.0000 MYTKN"
   tokenContract: string,
   batchSize: number = 50
 ) {
@@ -552,20 +595,52 @@ async function airdrop(
     const actions = batch.map(r => ({
       account: tokenContract,
       name: 'transfer',
-      authorization: [{ actor: issuer, permission: 'active' }],
-      data: {
-        from: issuer,
-        to: r.account,
-        quantity: r.amount,
-        memo: 'Airdrop'
-      }
+      authorization: [{ actor: ISSUER, permission: 'airdrop' }],
+      data: { from: ISSUER, to: r.account, quantity: r.amount, memo: 'Airdrop' }
     }));
 
-    // Sign via proton CLI keychain — see backend-patterns.md for createCliSession setup
-    await session.link.transact({ actions }, { blocksBehind: 3, expireSeconds: 30 });
+    // Verify by reading state back, not by trusting the CLI's exit code: probe the
+    // last recipient's balance before and after the push.
+    const probe = batch[batch.length - 1];
+    const symbol = probe.amount.split(' ')[1];
+    const balanceOf = async () =>
+      parseFloat((await rpc.get_currency_balance(tokenContract, probe.account, symbol))[0] ?? '0');
+    const before = await balanceOf();
 
-    // Rate limit
-    await new Promise(r => setTimeout(r, 500));
+    journal({ batch: i, size: batch.length, status: 'pending', at: new Date().toISOString() });
+
+    let delay = 1000;
+    for (let attempt = 0; ; attempt++) {
+      let pushError: unknown = null;
+      try {
+        // Single argument: the CLI sets the tx headers itself (backend-patterns.md → Transaction Signing)
+        await session.link.transact({ actions });
+      } catch (e) {
+        pushError = e;
+      }
+
+      // Let the chain decide: poll the probe for ~30 s, at least 3 s between reads (rule 7)
+      let landed = false;
+      for (let t = 0; t < 10 && !landed; t++) {
+        await sleep(3000);
+        landed = (await balanceOf()) > before;
+      }
+      if (landed) break;
+
+      // Retry only when nothing was broadcast (a pre-broadcast read call failed). Otherwise
+      // a CLI-signed tx can still land for up to 50 minutes, and resending pays twice:
+      // record the batch as ambiguous and stop (Bulk Minting Safely, step 4).
+      const preBroadcast = pushError !== null && /get_info|get_abi|ECONN|ETIMEDOUT/.test(String(pushError));
+      if (!preBroadcast || attempt >= 4) {
+        journal({ batch: i, status: 'ambiguous', error: String(pushError) });
+        throw new Error(`Batch ${i} ambiguous — reconcile before resending`);
+      }
+      await sleep(delay);                      // exponential backoff (rule 4)
+      delay = Math.min(delay * 2, 60_000);
+    }
+
+    journal({ batch: i, status: 'landed' });
+    await sleep(10_000);                       // one batch per ~10 s (rule 3)
   }
 }
 ```

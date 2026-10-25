@@ -206,7 +206,7 @@ The message after "with message:" is from your contract's `check()` calls.
 | `table not found` | Querying non-existent table | Check contract is deployed, table name correct |
 | *your `requireGet()` message* (C++ contracts: `unable to find key`) | Row doesn't exist | Use `get()` with a null check instead of `requireGet()` |
 | `transaction has expired, expiration is ...` (`expired_tx_exception`) | Transaction took too long | Increase `expireSeconds` |
-| `duplicate transaction <id>` | Same tx submitted twice | Add unique data or wait |
+| `duplicate transaction <id>` | First push was accepted or is still in flight | Do not resend. Wait for it to land or expire, then re-read state (`safety-guidelines.md` → Network Etiquette, rule 4). Never add a nonce or dummy field to make a transaction unique (rule 2); that is the mainnet spam pattern this skill declines |
 | `... has insufficient objective cpu resources` / `... was executing for too long` (`tx_cpu_usage_exceeded`) | Not enough CPU | Stake more CPU or optimize contract |
 | `account X has insufficient ram; needs N bytes has M bytes` (`ram_usage_exceeded`) | Not enough RAM | Buy more RAM |
 

@@ -56,6 +56,8 @@ proton key:list                      # public keys + accounts only; private valu
 
 After this, the key lives in the CLI's keychain — `proton-cli.json` in the CLI config dir, **plaintext on disk until `proton key:lock <password>` runs**, so treat the lock as part of setup. Your `.env` does NOT need `XPR_PRIVATE_KEY`.
 
+**Unattended hosts.** `proton transaction:push` signs from that keystore, so against a *locked* store it cannot sign on its own — expect it to fail or prompt for the password (verify the exact behaviour on your CLI version; this skill does not script around it). The expected daemon flow is: a human runs `proton key:unlock` at boot, under supervision, and the service signs for the rest of its uptime; the unlock password lives in the supervisor's secret store or the service's memory only — never in `.env`, a shell script, or a cron line. Do not leave a plaintext (unlocked) `proton-cli.json` sitting on a host reachable from the network just so a daemon can sign unattended; if the host is lost, the key is lost. Whatever the flow, the key in the keychain should belong to a linked, scoped permission (see **Permission Linking** below), so a compromise is bounded.
+
 ### Dependencies
 
 ```bash
@@ -83,6 +85,8 @@ const { rpc, session } = createCliSession({
 });
 
 // `session.link.transact(...)` signs by shelling out to `proton transaction:push`.
+// Each push signs from the CLI keystore: on a locked store it cannot sign
+// unattended (see "Unattended hosts" above).
 // `rpc` is a standard JsonRpc instance for read operations.
 ```
 
@@ -206,14 +210,19 @@ class XPRBackendService {
   private rpc: JsonRpc;
   private session: ProtonSession;
   private account: string;
+  private permission: string;
 
-  constructor(account: string, endpoint?: string) {
+  // `permission` is a custom permission linked to exactly the actions this
+  // service calls (see "Permission Linking" below) — not `active`. Every action
+  // the service signs must be linked to it, or run one instance per permission.
+  constructor(account: string, permission: string, endpoint?: string) {
     this.account = account;
+    this.permission = permission;
     // No privateKey parameter — the proton CLI handles signing from its keychain.
-    // The CLI must already have a key registered for `account` via `proton key:add`.
+    // The CLI must already hold the key for `account@permission` via `proton key:add`.
     const { rpc, session } = createCliSession({
       account,
-      permission: 'active',
+      permission,
       rpcEndpoint: endpoint || 'https://proton.eosusa.io',
     });
     this.rpc = rpc;
@@ -282,7 +291,7 @@ class XPRBackendService {
     return this.transact([{
       account: 'eosio.token',
       name: 'transfer',
-      authorization: [{ actor: this.account, permission: 'active' }],
+      authorization: [{ actor: this.account, permission: this.permission }],
       data: {
         from: this.account,
         to,
@@ -309,14 +318,16 @@ class XPRBackendService {
     return this.transact([{
       account: contract,
       name: action,
-      authorization: [{ actor: this.account, permission: 'active' }],
+      authorization: [{ actor: this.account, permission: this.permission }],
       data
     }]);
   }
 }
 
 // Usage — note: no private key argument. The CLI handles it.
-const xpr = new XPRBackendService('myaccount');
+// `pay` is a custom permission on myaccount linked to eosio.token::transfer and
+// mycontract::myaction (Permission Linking below). The keychain holds its key, not active's.
+const xpr = new XPRBackendService('myaccount', 'pay');
 
 await xpr.transfer('recipient', '10.0000 XPR', 'Payment');
 await xpr.callContract('mycontract', 'myaction', { param1: 'value' });
@@ -402,7 +413,9 @@ async function mintNFT(
   return sendTransaction(session, [{
     account: 'atomicassets',
     name: 'mintasset',
-    authorization: [{ actor: minter, permission: 'active' }],
+    // `minter` is a custom permission linked to atomicassets::mintasset only
+    // (Permission Linking below) — a leaked mint key cannot move funds.
+    authorization: [{ actor: minter, permission: 'minter' }],
     data: {
       authorized_minter: minter,
       collection_name: collection,
@@ -420,6 +433,10 @@ async function mintNFT(
 ### Batch Mint with Rate Limiting
 
 ```typescript
+// One transaction of up to 50 mints every 10 s = 6 tx/min, the rule 3 budget
+// (300 NFTs/min). A drop that needs more than 6 tx/min is a rule 3 case: your
+// own API node or paid resource plan, a human-written limit in config with the
+// reason, and the hard ceiling of 60 writes/min per operator. Not a bigger loop.
 async function batchMintWithLimit(
   session: ProtonSession,
   minter: string,
@@ -437,7 +454,7 @@ async function batchMintWithLimit(
     const actions = batch.map(recipient => ({
       account: 'atomicassets',
       name: 'mintasset',
-      authorization: [{ actor: minter, permission: 'active' }],
+      authorization: [{ actor: minter, permission: 'minter' }],   // linked permission, see mintNFT
       data: {
         authorized_minter: minter,
         collection_name: collection,
@@ -453,9 +470,10 @@ async function batchMintWithLimit(
     const result = await sendTransaction(session, actions);
     results.push(result);
 
-    // Rate limit: wait between batches
+    // Pace: 10 s between batches (or route sendTransaction through the
+    // RateLimiter below — same budget either way)
     if (i + batchSize < recipients.length) {
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 10_000));
     }
   }
 
@@ -472,43 +490,70 @@ async function batchMintWithLimit(
 ```typescript
 import cron from 'node-cron';
 
+// Writes go through the 6/min limiter (RateLimiter, "Rate Limiting" below). A run
+// that finds more than 6 due rows resolves 6 now and the rest on later ticks; if
+// that is too slow for your game, the answer is the rule 3 conditions, not a
+// bigger loop. See safety-guidelines.md → Network Etiquette, rules 1-4.
+const resolveLimiter = new RateLimiter(6, 60_000);
+let resolving = false;                                   // in-process mutex: ticks must not overlap
+const failedChallenges = new Map<number, number>();      // id -> failure count
+
 async function resolveExpiredChallenges(session: ProtonSession) {
-  // Get active challenges that have ended
-  const { rows } = await rpc.get_table_rows({
-    code: 'pricebattle',
-    scope: 'pricebattle',
-    table: 'challenges',
-    index_position: 'secondary',
-    key_type: 'i64',
-    lower_bound: 1,  // ACTIVE status
-    upper_bound: 1,
-    limit: 100
-  });
+  if (resolving) return;   // previous tick still running (it may be waiting on the limiter)
+  resolving = true;
+  try {
+    const now = Math.floor(Date.now() / 1000);
 
-  const now = Math.floor(Date.now() / 1000);
+    // Read first: active challenges only, small page
+    const { rows } = await rpc.get_table_rows({
+      code: 'pricebattle',
+      scope: 'pricebattle',
+      table: 'challenges',
+      index_position: 'secondary',
+      key_type: 'i64',
+      lower_bound: 1,  // ACTIVE status
+      upper_bound: 1,
+      limit: 25
+    });
 
-  for (const challenge of rows) {
-    const endTime = challenge.started_at + challenge.duration;
+    // Forget failures for rows that are gone (resolved by someone else, or deleted)
+    for (const id of failedChallenges.keys()) {
+      if (!rows.some(r => r.id === id)) failedChallenges.delete(id);
+    }
 
-    if (now >= endTime) {
+    // Push only for rows the read confirms are due, and never for a row that has
+    // already asserted — re-pushing a permanently failing row every minute is spam.
+    const due = rows.filter(c =>
+      now >= c.started_at + c.duration && !failedChallenges.has(c.id)
+    );
+
+    for (const challenge of due) {
       // Resolve the challenge — the contract reads the oracle price itself;
       // resolve(challenge_id: uint64, resolver: name) takes no price argument.
-      await sendTransaction(session, [{
+      const result = await resolveLimiter.run(() => sendTransaction(session, [{
         account: 'pricebattle',
         name: 'resolve',
-        authorization: [{ actor: 'resolver', permission: 'active' }],
+        authorization: [{ actor: 'resolver', permission: 'resolve' }],   // linked to pricebattle::resolve, not active
         data: {
           challenge_id: challenge.id,
           resolver: 'resolver'
         }
-      }]);
+      }]));
 
-      console.log(`Resolved challenge ${challenge.id}`);
+      if (result.success) {
+        console.log(`Resolved challenge ${challenge.id}`);
+      } else {
+        // Skip it from now on; a human looks at why it asserts
+        failedChallenges.set(challenge.id, (failedChallenges.get(challenge.id) ?? 0) + 1);
+        console.error(`Challenge ${challenge.id} failed, skipping on later runs:`, result.error);
+      }
     }
+  } finally {
+    resolving = false;
   }
 }
 
-// Run every minute
+// Run every minute; the mutex and the limiter make overlapping ticks harmless
 cron.schedule('* * * * *', () => resolveExpiredChallenges(session));
 ```
 
@@ -645,7 +690,7 @@ proton action eosio updateauth '{
     "accounts": [],
     "waits": []
   }
-}' myapp@owner
+}' myapp@active     # a child of active is created and linked with active; owner is not needed
 
 # Link permission to specific action
 proton action eosio linkauth '{
@@ -653,10 +698,10 @@ proton action eosio linkauth '{
   "code": "atomicassets",
   "type": "mintasset",
   "requirement": "minter"
-}' myapp@owner
+}' myapp@active
 ```
 
-Now you can sign mintasset with the limited `minter` key.
+Now you can sign mintasset with the limited `minter` key. Keep the owner key offline; it is only for recovering `active`. The same shape gives `XPRBackendService` its `pay` permission (link `eosio.token::transfer`) and the challenge resolver its `resolve` permission (link `pricebattle::resolve`).
 
 ### Rate Limiting
 
@@ -665,34 +710,51 @@ Use this for API calls **and** for chain writes. The default chain write budget 
 ```typescript
 class RateLimiter {
   private timestamps: number[] = [];
-  private maxRequests: number;
-  private windowMs: number;
+  private inFlight = false;
+  private waiters: Array<() => void> = [];
 
-  constructor(maxRequests: number, windowMs: number) {
-    this.maxRequests = maxRequests;
-    this.windowMs = windowMs;
-  }
+  // Rule 3 defaults: 6 writes per 60 s, one in flight. These are the numbers to
+  // put in the code, not a default to tune up (see loadConfig for the override gate).
+  constructor(private maxRequests = 6, private windowMs = 60_000) {}
 
   async acquire(): Promise<void> {
-    const now = Date.now();
-    this.timestamps = this.timestamps.filter(t => now - t < this.windowMs);
-
-    if (this.timestamps.length >= this.maxRequests) {
-      const waitTime = this.timestamps[0] + this.windowMs - now;
-      await new Promise(r => setTimeout(r, waitTime));
-      return this.acquire();
+    // Semaphore of one: never more than a single transaction in flight
+    while (this.inFlight) {
+      await new Promise<void>(r => this.waiters.push(r));
     }
+    this.inFlight = true;
 
-    this.timestamps.push(now);
+    // Sliding window
+    for (;;) {
+      const now = Date.now();
+      this.timestamps = this.timestamps.filter(t => now - t < this.windowMs);
+      if (this.timestamps.length < this.maxRequests) break;
+      await new Promise(r => setTimeout(r, this.timestamps[0] + this.windowMs - now));
+    }
+    this.timestamps.push(Date.now());
+  }
+
+  release(): void {
+    this.inFlight = false;
+    this.waiters.shift()?.();
+  }
+
+  // acquire → run → always release
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      this.release();
+    }
   }
 }
 
-// Usage: Max 10 transactions per second
-const limiter = new RateLimiter(10, 1000);
+// Usage: 6 transactions per minute, one in flight (safety-guidelines.md rule 3)
+const limiter = new RateLimiter(6, 60_000);
 
 async function rateLimitedTransfer(to: string, amount: string) {
-  await limiter.acquire();
-  return transfer(to, amount);
+  return limiter.run(() => transfer(to, amount));
 }
 ```
 
@@ -705,8 +767,8 @@ async function rateLimitedTransfer(to: string, amount: string) {
 | Error | Cause | Solution |
 |-------|-------|----------|
 | `missing authority` | Wrong key or permission | Check authorization matches key |
-| `expired transaction` | Transaction took too long | Increase `expireSeconds` |
-| `duplicate transaction` | Same tx submitted twice | Add unique data or wait |
+| `expired transaction` | Transaction took too long to reach a block (slow endpoint, or the push waited behind other work) | Wait, then retry with backoff (rule 4). `proton transaction:push` sets `expireSeconds` itself — `session.link.transact()` has no option to raise it. If it keeps happening, look at the RPC endpoint, not the loop. |
+| `duplicate transaction` | Same tx submitted twice | Do not resubmit: the first push was accepted or is in flight. Look it up by `trx_id`. Never add a nonce or dummy field to make a transaction unique (rule 2). |
 | `cpu usage exceeded` | Not enough CPU staked | Stake more CPU or wait |
 | `assertion failure` | Contract validation failed | Check action parameters |
 
@@ -854,9 +916,6 @@ XPR_CHAIN_ID=384da888112027f0321850a169f737c33e53b388aad48b5adace4bab97f437e0
 # XPR_RPC_ENDPOINT=https://tn1.protonnz.com
 # XPR_CHAIN_ID=71ee83bcf52142d61019d95f9cc5427ba6a0d7ff8accd9e2088ae2abeaf3d3dd
 
-# Optional: separate signing key for A2A protocol (limited-blast-radius custom permission)
-# A2A_SIGNING_KEY=PVT_K1_xxxxx
-
 # Optional: @xpr-agents/openclaw plugin settings (defaults shown)
 # XPR_NETWORK=mainnet                 # mainnet | testnet
 # XPR_PERMISSION=active
@@ -868,11 +927,16 @@ XPR_CHAIN_ID=384da888112027f0321850a169f737c33e53b388aad48b5adace4bab97f437e0
 # Optional: AtomicAssets
 ATOMIC_API=https://xpr.api.atomicassets.io
 
-# Optional: Rate limiting
-MAX_TPS=10
+# Chain write budget (safety-guidelines.md → Network Etiquette, rule 3).
+# 6/min is the ceiling for an unattended process; loadConfig refuses more
+# unless RATE_OVERRIDE_REASON is set, and never accepts more than 60.
+MAX_TX_PER_MINUTE=6
+# RATE_OVERRIDE_REASON=      # human-written reason; needs your own API node too
 ```
 
-Add `.env` to `.gitignore` **before** writing any key into it — a committed key is a leaked key. `A2A_SIGNING_KEY` must be a key registered on a custom permission with no token-transfer or funds authority, so a leak costs reputation only.
+Add `.env` to `.gitignore` **before** writing any key into it — a committed key is a leaked key.
+
+`A2A_SIGNING_KEY` — the one key the A2A protocol needs in process — is deliberately **not** in this template. It belongs in a secrets manager or the supervisor's secret store, injected into the environment at start, and it must be the key of a dedicated `a2a` permission with no token-transfer or funds authority, so a leak costs reputation only (see "What this doesn't fix" above). No `PVT_K1_` string belongs in any file an agent might copy.
 
 ### Config Loader
 
@@ -884,7 +948,7 @@ interface Config {
   rpcEndpoint: string;
   chainId: string;
   atomicApi: string;
-  maxTps: number;
+  maxTxPerMinute: number;
 }
 
 function loadConfig(): Config {
@@ -917,12 +981,30 @@ function loadConfig(): Config {
     throw new Error(`No key in the proton CLI keychain for ${process.env.XPR_ACCOUNT}. Run: proton key:add`);
   }
 
+  // Chain write budget — rule 3. Above 6/min only with your own API node and a
+  // human-written reason in the config. Even with the reason set, rule 3's hard
+  // ceiling still applies: 60 writes/min per operator across ALL accounts.
+  const maxTxPerMinute = parseInt(process.env.MAX_TX_PER_MINUTE || '6', 10);
+  if (!Number.isInteger(maxTxPerMinute) || maxTxPerMinute < 1) {
+    throw new Error('MAX_TX_PER_MINUTE must be a positive integer (default 6)');
+  }
+  if (maxTxPerMinute > 6 && !process.env.RATE_OVERRIDE_REASON) {
+    throw new Error(
+      `MAX_TX_PER_MINUTE=${maxTxPerMinute} is above the 6/min default. Lower it, or set ` +
+      'RATE_OVERRIDE_REASON with the reason and run your own API node ' +
+      '(safety-guidelines.md → Network Etiquette, rule 3).'
+    );
+  }
+  if (maxTxPerMinute > 60) {
+    throw new Error('MAX_TX_PER_MINUTE above 60 is never allowed (rule 3 hard ceiling, per operator).');
+  }
+
   return {
     account: process.env.XPR_ACCOUNT!,
     rpcEndpoint: process.env.XPR_RPC_ENDPOINT || 'https://proton.eosusa.io',
     chainId: process.env.XPR_CHAIN_ID || '384da888112027f0321850a169f737c33e53b388aad48b5adace4bab97f437e0',
     atomicApi: process.env.ATOMIC_API || 'https://xpr.api.atomicassets.io',
-    maxTps: parseInt(process.env.MAX_TPS || '10')
+    maxTxPerMinute
   };
 }
 ```

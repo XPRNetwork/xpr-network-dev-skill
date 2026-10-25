@@ -6,7 +6,7 @@
 # Step 2 (proton CLI keychain) stays manual because it requires interactive
 # key paste — the script prints the exact commands the operator must run.
 #
-# Safe to re-run: npm install and git pull/clone are both idempotent.
+# Safe to re-run: npm install is idempotent and the skill checkout is pinned to SKILL_REF.
 
 set -euo pipefail
 
@@ -16,6 +16,9 @@ SKILL_REPO="${SKILL_REPO:-https://github.com/XPRNetwork/xpr-network-dev-skill}"
 RPC_ENDPOINT="${RPC_ENDPOINT:-https://proton.eosusa.io}"
 # Pinned versions: this host goes on to hold a signing key, so never pull
 # "latest" here. Bump deliberately after reviewing the upstream changelog.
+# The skill is this host's instruction set, so it is pinned to a release tag,
+# never to a moving branch. Bump SKILL_REF after reading the CHANGELOG.
+SKILL_REF="${SKILL_REF:-v2.14.0}"
 OPENCLAW_VERSION="${OPENCLAW_VERSION:-0.9.2}"
 SDK_VERSION="${SDK_VERSION:-0.5.3}"
 # @proton/js: match the ^28 range @xpr-agents/sdk and openclaw declare; 30.x is
@@ -76,14 +79,16 @@ say "Step 3 — Install xpr-network-dev-skill into $SKILL_DIR"
 
 mkdir -p "$(dirname "$SKILL_DIR")"
 if [ -d "$SKILL_DIR/.git" ]; then
-  ( cd "$SKILL_DIR" && git pull --ff-only ) || die "git pull failed in $SKILL_DIR"
-  ok "updated existing clone at $SKILL_DIR"
+  ( cd "$SKILL_DIR" && git fetch -q --tags origin && git checkout -q "$SKILL_REF" ) \
+    || die "could not check out $SKILL_REF in $SKILL_DIR"
+  ok "existing clone at $SKILL_DIR now at $SKILL_REF"
 else
   if [ -e "$SKILL_DIR" ]; then
     die "$SKILL_DIR exists but is not a git checkout; refusing to overwrite"
   fi
-  git clone --depth 1 "$SKILL_REPO" "$SKILL_DIR"
-  ok "cloned $SKILL_REPO → $SKILL_DIR"
+  git clone -q --depth 1 --branch "$SKILL_REF" "$SKILL_REPO" "$SKILL_DIR" \
+    || die "git clone of $SKILL_REPO at $SKILL_REF failed (does the tag exist?)"
+  ok "cloned $SKILL_REPO at $SKILL_REF → $SKILL_DIR"
 fi
 
 if [ ! -f "$SKILL_DIR/skill/SKILL.md" ]; then
@@ -211,7 +216,8 @@ if [ "$KEYCHAIN_STATUS" = "not provisioned (see manual steps printed above)" ]; 
 
   Non-interactive (managed console, no TTY):
 
-      echo "no" | proton key:add PVT_K1_yourkey
+      XPR_PRIVATE_KEY=... (set it in the Secrets console, not on the command line)
+      echo "no" | proton key:add "$XPR_PRIVATE_KEY"
       proton key:list
 
   See agent-bootstrap.md → Step 2 for the threat-model tradeoff and how

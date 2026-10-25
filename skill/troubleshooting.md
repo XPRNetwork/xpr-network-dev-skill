@@ -77,15 +77,10 @@ await session.transact(
 **Cause**: Same transaction submitted twice within expire window.
 
 **Solutions**:
-- Wait for previous transaction to complete
-- Add unique data (timestamp, nonce) to transaction
-
-```typescript
-data: {
-  // Add unique element
-  nonce: Date.now()
-}
-```
+- A duplicate means the first push was accepted or is still in flight. Do not resend. Wait for it to land
+  or expire, then re-read state (`safety-guidelines.md#network-etiquette-do-not-spam-the-chain`, rule 4).
+- Never add a nonce or dummy field to make a transaction unique (rule 2); that is the mainnet spam pattern
+  this skill declines.
 
 ### A push returned a `transaction_id`, but nothing changed on chain
 
@@ -223,23 +218,37 @@ error.
 
 **Solutions**:
 ```typescript
-// Use multiple endpoints with fallback
+// Use multiple endpoints with fallback — paced, bounded, and never rotating past a throttle
 const ENDPOINTS = [
   'https://proton.eosusa.io',
   'https://proton.protonuk.io',
   'https://proton.cryptolions.io'
 ];
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-async function queryWithFallback(query: Function) {
-  for (const endpoint of ENDPOINTS) {
+async function queryWithFallback(query: Function, maxAttempts = 3) {
+  let delay = 3000;        // at least 3 s between attempts (safety-guidelines → Network Etiquette, rule 7)
+  let i = 0;               // endpoint index
+  for (let attempt = 1; ; attempt++) {
+    const endpoint = ENDPOINTS[i % ENDPOINTS.length];
     try {
-      const rpc = new JsonRpc(endpoint);
-      return await query(rpc);
-    } catch (e) {
-      console.warn(`Endpoint ${endpoint} failed, trying next...`);
+      return await query(new JsonRpc(endpoint));
+    } catch (e: any) {
+      if (attempt >= maxAttempts) throw new Error(`Gave up after ${attempt} attempts: ${e.message}`);
+      const throttled = e?.response?.status === 429 || e?.response?.status === 403 ||
+        /\b(429|403)\b|rate limit/i.test(e?.message ?? '');
+      if (throttled) {
+        // The operator's answer: slow down. Stay on this endpoint and wait it out; do not
+        // hop to the next public node to get around it (rule 11).
+        console.warn(`${endpoint} throttled, backing off ${delay} ms`);
+      } else {
+        console.warn(`${endpoint} unreachable, trying next in ${delay} ms`);
+        i++;               // rotate only on a connection failure
+      }
+      await sleep(delay);
+      delay = Math.min(delay * 2, 60_000);   // exponential backoff (rule 4)
     }
   }
-  throw new Error('All endpoints failed');
 }
 ```
 
@@ -433,9 +442,9 @@ npx tsc --noEmit
 # List stored keys
 proton key:list
 
-# Add the key — interactive `proton key:add` is preferred; passing the key as an
-# argument writes it to shell history and exposes it in `ps` while the command runs.
-proton key:add PVT_K1_xxxxx
+# Add the key interactively — run with no argument and paste at the prompt. Never pass
+# the key on the command line: it lands in shell history, `ps`, and any session transcript.
+proton key:add
 ```
 
 ### "Permission denied"
@@ -527,7 +536,7 @@ proton action eosio updateauth '{
     ],
     "waits": []
   }
-}' mycontract@owner
+}' mycontract@active
 ```
 
 ---
@@ -626,8 +635,9 @@ curl "https://proton.eosusa.io/v2/history/get_actions?account=ACCOUNT&limit=10"
 1. **Block Explorer**: https://explorer.xprnetwork.org - Check transactions and errors
 2. **Telegram**: https://t.me/XPRNetwork - Community help
 3. **Help Desk**: https://help.xprnetwork.org - Official support
-4. **GitHub Issues**: https://github.com/XPRNetwork - Report bugs
-4. **Hyperion**: Check transaction history for debugging
+4. **Error in this skill** (wrong fact, unsafe pattern, dead link)? Open an issue at
+   https://github.com/XPRNetwork/xpr-network-dev-skill/issues — the only tracked channel; there is no email.
+5. **Hyperion**: Check transaction history for debugging
 
 ### Information to Include When Asking for Help
 
