@@ -139,7 +139,7 @@ node -e "
     console.log('chain_id:', info.chain_id, 'head:', info.head_block_num);
 
     // listAgents returns { items, hasMore, nextCursor } — verified against
-    // @xpr-agents/sdk@0.5.2 (AgentRegistry.js). The .items field is
+    // @xpr-agents/sdk@0.5.3 (AgentRegistry.js). The .items field is
     // an Agent[]; do NOT call .map directly on the wrapper.
     const agents = new AgentRegistry(rpc);
     const result = await agents.listAgents({ limit: 5 });
