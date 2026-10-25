@@ -100,7 +100,9 @@ max-clients = 100
 plugin = eosio::chain_api_plugin
 plugin = eosio::http_plugin
 plugin = eosio::net_plugin
-plugin = eosio::net_api_plugin
+# eosio::net_api_plugin is ops-only: it adds unauthenticated /v1/net/connect and
+# /v1/net/disconnect. Never load it on a node whose HTTP port sits behind the public
+# proxy; use it from the box over 127.0.0.1 on an ops node, and still 403 /v1/net/ in nginx.
 
 # HTTP settings
 # Bind to loopback only — nginx fronts the HTTP API (see Reverse Proxy below)
@@ -259,9 +261,10 @@ Add to `config.ini`:
 ```ini
 # Block producer settings
 producer-name = youraccount
-# Plaintext private key on disk: run `chmod 600 config.ini` and never commit it.
-# Safer: keep the key in keosd and use `signature-provider = PUB_KEY=KEOSD:http://127.0.0.1:8900`
-signature-provider = PUB_KEY=KEY:PRIV_KEY
+# Keep the block signing key in keosd (unlocked wallet bound to loopback), not in config.ini:
+signature-provider = PUB_KEY=KEOSD:http://127.0.0.1:8900
+# testnet only; plaintext key in config — run `chmod 600 config.ini` and never commit it:
+# signature-provider = PUB_KEY=KEY:PRIV_KEY
 
 # Producer plugin
 plugin = eosio::producer_plugin
@@ -330,6 +333,9 @@ abi-serializer-max-time-ms = 2000
 ### Reverse Proxy (Nginx)
 
 ```nginx
+# http {} context — the zone must exist or nginx refuses to start on the limit_req below
+limit_req_zone $binary_remote_addr zone=api:10m rate=20r/s;
+
 upstream nodeos {
     server 127.0.0.1:8888;
 }
@@ -340,6 +346,10 @@ server {
 
     ssl_certificate /etc/letsencrypt/live/api.yournode.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/api.yournode.com/privkey.pem;
+
+    # nodeos control endpoints that must never be public: peer control (net), producer
+    # control, db_size, test_control. Keep this above the catch-all.
+    location ~ ^/v1/(net|producer|db_size|test_control)/ { return 403; }
 
     location / {
         proxy_pass http://nodeos;
@@ -354,6 +364,36 @@ server {
     }
 }
 ```
+
+### Defending against abusive traffic
+
+XPR Network has no transaction fees, so spam costs its sender nothing and costs every node CPU, disk and bandwidth (`safety-guidelines.md#network-etiquette-do-not-spam-the-chain` is the builder-side rule set). Operator-side controls, least to most invasive:
+
+**nginx, in front of the API.** `limit_req` (above) caps requests per client IP; add `limit_conn` so one client cannot hold every worker connection open with slow or streaming requests:
+
+```nginx
+limit_conn_zone $binary_remote_addr zone=api_conn:10m;   # http {} context, next to limit_req_zone
+
+location / {
+    limit_req  zone=api burst=20 nodelay;
+    limit_conn api_conn 20;
+    # ...proxy_pass etc. as above
+}
+```
+
+**nodeos HTTP limits** (`config.ini`): `http-max-in-flight-requests = 100` answers 429 instead of queueing requests without bound; `max-body-size = 1048576` rejects oversized `push_transaction` bodies before they are parsed (1 MiB is plenty for a real transaction).
+
+**nodeos blacklists**, when a specific account or contract is confirmed to be flooding the chain:
+
+```ini
+actor-blacklist = <spam.account>        # drop transactions authorised by this account
+contract-blacklist = <spam.contract>    # drop transactions that call this contract
+# sender-bypass-whiteblacklist = <trusted.account>   # deferred txs sent by this account skip the lists (rarely needed)
+```
+
+Blacklists change which transactions a node accepts, so on a **producing** BP they change which blocks get built. Apply them only after the case is confirmed in the operator/validators channel, and coordinate so every producing BP applies the same list at the same time — otherwise one BP includes what another rejects and blocks stop being consistent. API-only nodes can apply them unilaterally. They are a stopgap: remove them once the behaviour stops, and never use them to settle a dispute.
+
+**Hyperion.** A confirmed spam contract can be dropped from indexing and the API's per-query limits tightened — see `hyperion-setup.md` → *Defending against abusive traffic*.
 
 ---
 

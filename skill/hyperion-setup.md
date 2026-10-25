@@ -101,6 +101,9 @@ Key config.ini for a SHIP-only node (not public API):
 ```ini
 http-server-address = 127.0.0.1:8888        # local only; Hyperion + ops
 p2p-listen-endpoint = 0.0.0.0:9876          # optional public seed
+# SECURITY: Limit connections per host to prevent connection exhaustion attacks
+p2p-max-nodes-per-host = 2
+max-clients = 100
 chain-state-db-size-mb = 32768
 wasm-runtime = eos-vm-jit
 eos-vm-oc-enable = 1                        # big replay speedup
@@ -110,7 +113,9 @@ contracts-console = false                   # console output is NOT indexed by H
 plugin = eosio::chain_api_plugin
 plugin = eosio::http_plugin
 plugin = eosio::net_plugin
-plugin = eosio::net_api_plugin
+plugin = eosio::net_api_plugin              # safe ONLY because http-server-address is loopback: /v1/net/connect and
+                                            # /v1/net/disconnect are unauthenticated — never expose this port, and 403
+                                            # /v1/net/ in nginx (below) since Hyperion forwards non-history calls here
 plugin = eosio::state_history_plugin
 state-history-endpoint = 127.0.0.1:8080     # NEVER expose SHIP publicly
 trace-history = true
@@ -187,6 +192,10 @@ server {
     ssl_certificate /etc/letsencrypt/live/hyperion-xpr-mainnet.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/hyperion-xpr-mainnet.example.com/privkey.pem;
 
+    # Hyperion forwards non-history calls to its chain_api upstream (nodeos), so the
+    # nodeos control endpoints would be reachable through it. Keep this above the catch-all.
+    location ~ ^/v1/(net|producer|db_size|test_control)/ { return 403; }
+
     location / {
         limit_req zone=hyperion burst=100 nodelay;
         proxy_pass http://127.0.0.1:7000;
@@ -205,6 +214,13 @@ server {
 ```
 
 If DNS is on Cloudflare: **grey cloud (DNS only)**. The orange-cloud proxy times out long history queries and interferes with streaming websockets.
+
+## Defending against abusive traffic
+
+Two levers beyond the nginx rate limit above (nodeos-side blacklists and HTTP limits are in `node-operation.md` → *Defending against abusive traffic*):
+
+- **Drop a confirmed spam contract from the index.** In `config/chains/<chain>.config.json`, `"blacklists": { "actions": ["<spam.contract>::*"] }` stops its actions being deserialised and stored. Only do this for a contract confirmed as spam in the operator channel, and weigh it against the "keep data rather than blacklisting" advice in `hyperion-operations-caveats.md` — a public full-history node with a blacklist is no longer full history, so document the gap in your bp.json notes.
+- **Cap what one client can pull per call.** The `api` block's `limits` object sets the maximum rows per endpoint (`get_actions`, `get_deltas`, `get_voters`, `get_links`, `get_trx_actions`) and `rate_limit_rpm` caps requests per minute per client before nginx is even involved (Hyperion's own 429s — see *Operations* above). Keep both at or below the defaults on a public node; see Hyperion's config reference for the exact keys in your version.
 
 ## bp.json
 

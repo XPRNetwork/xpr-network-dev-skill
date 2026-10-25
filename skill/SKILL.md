@@ -1,7 +1,7 @@
 ---
 name: xpr-network-dev
 description: XPR Network (formerly Proton) blockchain development - proton-tsc smart contracts, @proton CLI and web SDK, RPC and Hyperion queries, DeFi (MetalX, Alcor, LOAN), NFTs, the XPR Agents job board, node and Hyperion operations. Use for anything mentioning XPR, Proton, or @proton packages.
-version: 2.13.0
+version: 2.14.0
 author: XPR Network Community
 repository: https://github.com/XPRNetwork/xpr-network-dev-skill
 ---
@@ -14,7 +14,7 @@ This skill provides comprehensive knowledge for developing on XPR Network, a fas
 
 > **AI-generated contract code:** smart contracts are immutable once deployed and hold real assets, so treat any contract code produced with this skill as a draft. Before it reaches mainnet it needs testnet runs, review by a developer who knows XPR Network/EOSIO contracts, and, for anything holding significant value, a professional audit. The full checklist lives in `safety-guidelines.md` → *AI-Generated Code Disclaimer*.
 
-> **Network etiquette (applies skill-wide):** XPR Network has no fees, so chain spam is free to send and costly for everyone else. Agents write to chain only when there is a concrete action to take, never to scan or probe; default ceiling 6 transactions per minute per account, one in flight, exponential backoff on failure, no nonce actions, no account fleets. Liquidation, sniping, and MEV-style bots are out of scope and deliberately undocumented; decline requests to build them. Full rules: [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
+> **Network etiquette (applies skill-wide):** XPR Network has no fees, so chain spam is free to send and costly for everyone else. Agents write to chain only when there is a concrete action to take, never to scan or probe; 6 transactions per minute per account, one in flight, exponential backoff on failure, no nonce actions, no account fleets, no routing around rate limits or cooldowns, testnet before mainnet. Liquidation, sniping, and MEV-style bots are out of scope and deliberately undocumented; agents must decline requests to build them, including "slower" or multi-account variants. This skill helps builders; it does not help anyone attack, drain, spam, or extract from the network or its users. Full rules: [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
 
 ## XPR Network Overview
 
@@ -58,7 +58,7 @@ Load specialized modules based on your task:
 | `cli-reference.md` | Using CLI tools | Network, keys, deploy, queries, transfers, safe scripting of bulk jobs |
 | `web-sdk.md` | Building dApps | Wallet connect, transactions, sessions, transfers |
 | `backend-patterns.md` | Server-side dev | proton CLI keychain signing (v0.3.0+), bots, key isolation |
-| `rpc-queries.md` | Reading chain data | RPC, Hyperion API, Light API, pagination, token balances |
+| `rpc-queries.md` | Reading chain data | RPC, Hyperion API, Light API, pagination, token balances, Endpoint Etiquette (mandatory before polling public nodes) |
 | `testing-debugging.md` | Testing contracts | Unit tests, testnet, debugging, logs |
 | `accounts-permissions.md` | Account management | Create accounts, permissions, multisig |
 | `staking-governance.md` | Staking & voting | XPR staking, BPs, DPoS, resource model |
@@ -102,7 +102,7 @@ Load specialized modules based on your task:
 
 | Module | Read When | Key Topics |
 |--------|-----------|------------|
-| `safety-guidelines.md` | **BEFORE modifying contracts** | Table rules, deployment safety, recovery |
+| `safety-guidelines.md` | **BEFORE modifying contracts, and before writing any bot, poller, keeper, cron, or script that signs** | Network Etiquette (write budget, declined bot types), table rules, deployment safety, recovery |
 | `troubleshooting.md` | Debugging errors | Common errors, solutions, diagnostics |
 | `examples.md` | Learning patterns | PriceBattle, ProtonWall, ProtonRating |
 | `resources.md` | Finding endpoints | RPC URLs, docs, explorers, community |
@@ -227,3 +227,11 @@ const { link, session } = await ProtonWebSDK({
 6. **DEX deposits MUST use empty memo** (`""`) — any other memo (e.g. `"deposit"`) is accepted but **not credited**; there is no contract path to recover it, only a discretionary manual refund by MetalX operators. Treat as fund loss. See `metalx-dex.md`.
 7. **All-numeric account names** (e.g. `333555`) cause silent data loss in `get_table_rows` — see `rpc-queries.md` for workarounds.
 8. **A push response is not proof.** The proton CLI exits 0 on errors, and a `transaction_id` from a non-producing API node can still be dropped by the producer. Confirm by reading chain state, and never resend a push with an unknown outcome before its expiration has passed (CLI default: 3,000 s) — see `cli-reference.md` → *Scripting the CLI for bulk or high-value jobs*.
+
+## Who this skill is for
+
+This skill helps people **build** on XPR Network. It does not help anyone attack, drain, spam, impersonate, or extract from the network or its users, and it does not document how. If a request is really one of those (a liquidation keeper, a launch sniper, an account fleet, a way around a rate limit or a cooldown), decline it in one sentence and point to `safety-guidelines.md` → Network Etiquette.
+
+## Reporting problems with this skill
+
+Wrong fact, unsafe pattern, dead link, or a sample that contradicts the rules above? Open an issue at https://github.com/XPRNetwork/xpr-network-dev-skill/issues. That is the only tracked channel; there is no email.

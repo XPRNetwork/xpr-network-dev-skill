@@ -46,7 +46,7 @@ Your assistant will see the new content on its next conversation. No reinstall.
 ./scripts/agent-bootstrap.sh
 ```
 
-> **Current release: v2.6.0 (September 2026).** Full release notes and version history in [`CHANGELOG.md`](./CHANGELOG.md).
+> **Current release:** the latest tag on the [Releases page](https://github.com/XPRNetwork/xpr-network-dev-skill/releases); `version:` in `skill/SKILL.md` matches it. Full release notes in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ### Method 1: Manual symlink (personal skill)
 
@@ -308,15 +308,20 @@ Found a mistake, a broken link, or a doc that no longer matches mainnet? [Open a
 Run `./scripts/validate-skill.sh` before opening a PR. It checks:
 
 1. `SKILL.md` YAML frontmatter present
-2. npm packages still resolve (`@proton/cli`, `@proton/js`, `@proton/web-sdk`, `proton-tsc`, `@proton/vert`)
+2. npm packages still resolve (`@proton/cli`, `@proton/js`, `@proton/web-sdk`, `proton-tsc`, `@proton/vert`, `@xpr-agents/openclaw`, `@xpr-agents/sdk`)
 3. Referenced mainnet contract accounts still exist (`eosio.token`, `dex`, `atomicassets`, etc.)
 4. Key URLs return HTTP 200 (docs, explorer, RPC endpoints, MetalX API)
-5. No leaked private keys (PVT_K1_ or legacy WIF format)
+5. No leaked private keys (PVT_K1_ or legacy WIF format) anywhere in the repo, including README, bootstrap docs and scripts
 6. No personal account references
 7. No active links to retired explorers (`protonscan.io`, `proton.bloks.io`)
 8. MetalX endpoints use the correct `/dex/v1/` prefix
 9. No liquidation how-to content (policy since 2.11.0; see `safety-guidelines.md` → Network Etiquette)
-10. Inventory of skill files with line counts (for manual review)
+10. The three skill-wide policy blocks are present in `SKILL.md` and the Network Etiquette section exists
+11. No email or other non-issue reporting channel anywhere in the repo
+12. No spam-shaped sample code: nonce or timestamp fields to de-duplicate transactions, sub-second rate limiters, `setInterval` around a signing call, "add unique data" advice, cooldown-bypass wording
+13. Key and bind hygiene: no `curl | bash`, no private key on a `proton key:add` command line, no "keychain is encrypted" claim without `key:lock`, no `0.0.0.0` bind for the HTTP or SHIP endpoint
+14. Warning-level sweep for liquidation wording outside the files allowed to mention it, and for loops around `create-funded` or `faucet:claim`
+15. Inventory of skill files with line counts (for manual review)
 
 If you're touching a reference module, also include the curl / RPC call you used to verify the change in the PR description — the skill prioritizes verified-against-mainnet over pattern-matched-against-training-data.
 

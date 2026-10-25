@@ -388,6 +388,8 @@ Cancels an order in the order queue, stop-loss table, or order book.
 
 Processes orders in the order queue across all markets.
 
+> Called by the MetalX matching engine. Include at most one `process` in your own order transaction; never call `process` or `processsltp` on a schedule, in a loop, or against other users' orders. See [Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
+
 **Parameters:**
 
 | Parameter | Type | Required | Description |
@@ -410,6 +412,8 @@ Processes orders in the order queue across all markets.
 #### processsltp
 
 Processes stop-loss and take-profit orders for a specific market.
+
+> Called by the MetalX matching engine. Include at most one `process` in your own order transaction; never call `process` or `processsltp` on a schedule, in a loop, or against other users' orders. See [Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
 
 **Parameters:**
 
@@ -688,7 +692,7 @@ proton_action('dex', 'placeorder', {
 proton_action('dex', 'process', {'q_size': 25, 'show_error_msg': 0})
 ```
 
-> **Atomicity trade-off.** The original Python example bundled all three actions into a single atomic EOSIO transaction (via `pyeoskit.generate_packed_transaction`). This rewrite runs each action as its own `proton action` call to keep the private key in the CLI keychain. If step 2 or 3 fails, step 1's deposit is recoverable via `proton action dex withdrawall '{"account":"youraccount"}' youraccount` — the funds aren't lost, they sit in the user's DEX deposit balance until withdrawn or used.
+> **Atomicity trade-off.** The original Python example bundled all three actions into a single atomic EOSIO transaction (via `pyeoskit.generate_packed_transaction`). This rewrite runs each action as its own `proton action` call to keep the private key in the CLI keychain. That is three writes per order; count them against the write budget and prefer the atomic single-transaction path for anything automated. If step 2 or 3 fails, step 1's deposit is recoverable via `proton action dex withdrawall '{"account":"youraccount"}' youraccount` — the funds aren't lost, they sit in the user's DEX deposit balance until withdrawn or used.
 >
 > If you need atomic multi-action signing, use the **JavaScript path above** — `createCliSession.link.transact({ actions })` bundles every action into a single on-chain transaction. If you specifically need MetalX's `/orders/submit` endpoint (e.g. for the synchronous `ordinal_order_id` in the response), no keychain path works: the endpoint wants a signed-but-not-broadcast serialized tx, which neither `createCliSession` nor `proton transaction:push` will produce. See the `<details>` legacy block under the JS Submit Order snippet for the `signatureProvider`-based escape hatch, and prefer the on-chain path plus `/orders/lifecycle` lookup unless you genuinely need the synchronous ID. `proton transaction` at the CLI level would be the obvious Python atomic equivalent, but `@proton/cli`'s `transaction` command is still broken as of 0.1.99 (missing `JSON.parse` on its argument; tracked upstream).
 

@@ -59,16 +59,16 @@ Fast, lightweight API for common queries like token balances.
 
 | Code | Meaning | Recovery |
 |---|---|---|
-| `429 Too Many Requests` | **Hyperion's internal rate limit** — you've crossed the per-IP threshold momentarily. Not a ban; just slow down. | Back off exponentially (2s → 4s → 8s, cap ~60s), switch endpoint, retry. Honor `Retry-After` if set. |
+| `429 Too Many Requests` | **Hyperion's internal rate limit** — you've crossed the per-IP threshold momentarily. Not a ban; just slow down. | Back off exponentially **on the same endpoint** (2s → 4s → 8s, cap ~60s), honor `Retry-After` if set, then retry. Do not hop to another operator to dodge the limit — the limit is the operator's answer (rule 11). |
 | `403 Forbidden` | **You've been added to the operator's manual ban list** — a human watched your traffic and decided you were abusing the endpoint. | Much harder to recover from. Fix the abuse pattern, message the operator, ask to be unbanned. Don't keep retrying — that confirms you're a bot. |
-| `503 Service Unavailable` | Operator overloaded (often by someone else's abuse) or in maintenance. | Treat like 429: back off, switch endpoint. |
+| `503 Service Unavailable` | Operator overloaded (often by someone else's abuse) or in maintenance. | Back off, then fail over to another endpoint. An outage (5xx, connection refused) is the one case where moving on is right; a 429 is not. |
 
 ### Defaults that won't get you banned
 
-- **Don't poll faster than you need.** Live state (head_block_num, freshest trades) at 1–2 seconds is fine. Most state (balances, table rows, account info) changes infrequently — **10 seconds or more is plenty**. Never sub-second.
+- **Don't poll faster than you need.** Latency-sensitive state (head_block_num, freshest trades, a payment watcher) at **3 seconds minimum**. Most state (balances, table rows, account info) changes infrequently — **10 seconds or more is plenty**; background sync and analytics at 30–60 s. Never sub-second. (`safety-guidelines.md` → Network Etiquette, rule 7.)
 - **Cache aggressively.** `get_info.chain_id` never changes — cache forever. ABIs change only on contract deploy — cache for hours. Account info, table schemas — minutes to hours, not seconds.
 - **Stream instead of polling when you can.** Hyperion's socket.io stream (mounted at `/stream`) costs the operator one connection where one-second polling costs 86,400 requests/day per agent. Caveat: on the public XPR endpoints the connection handshake works but data delivery is unverified as of 2026-09 (`real-time-events.md` has the details) — so default to polite polling and stream from your own Hyperion when you need real-time.
-- **Rotate between endpoints.** Round-robin or randomize across the operator pool to spread load.
+- **Spread load; don't dodge limits.** Round-robin or randomize across the operator pool for *normal* traffic. When one endpoint throttles you (429), back off on that endpoint — rotating away from a rate limit is exactly what rule 11 forbids. Fail over only on 5xx / connection failure.
 - **Identify yourself.** Set a meaningful `User-Agent` header (e.g. `XPRAgent/myagent 1.0`). Operators triage bad behavior much more aggressively when traffic is anonymous.
 - **High-volume? Run your own.** If your agent monitors every swap, indexes every NFT trade, or otherwise needs thousands of requests per minute, **don't rely on public endpoints** — run your own indexer node or rent dedicated capacity.
 
@@ -89,7 +89,7 @@ RPC-only providers (404 on `/v2/history/*`): `api.protonnz.com`, `proton.cryptol
 
 ### Polite client (drop-in)
 
-A small fetch wrapper that rotates endpoints, respects `Retry-After`, backs off exponentially, and aborts on `403` (since a ban won't fix itself):
+A small fetch wrapper that backs off on the **same** endpoint on `429` (honouring `Retry-After`), fails over only on `5xx` / connection failure, and aborts on `403` (since a ban won't fix itself):
 
 ```typescript
 const HYPERION_ENDPOINTS = [
@@ -103,38 +103,53 @@ const HYPERION_ENDPOINTS = [
 
 const USER_AGENT = 'XPRAgent/your-agent-name 1.0';  // change this!
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const backoff = (attempt: number) => Math.min(60_000, 2_000 * Math.pow(2, attempt));
+
 async function politeFetch(
   path: string,
   options: RequestInit = {},
-  attempt = 0
+  attempt = 0,
+  endpointIndex = 0
 ): Promise<Response> {
-  const endpoint = HYPERION_ENDPOINTS[attempt % HYPERION_ENDPOINTS.length];
+  if (attempt >= 5) {
+    throw new Error(`Giving up on ${path} after ${attempt} attempts`);
+  }
+  const endpoint = HYPERION_ENDPOINTS[endpointIndex % HYPERION_ENDPOINTS.length];
   const url = `${endpoint}${path}`;
 
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      'User-Agent': USER_AGENT,
-      ...(options.headers || {}),
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...options,
+      headers: {
+        'User-Agent': USER_AGENT,
+        ...(options.headers || {}),
+      },
+    });
+  } catch (err) {
+    // Connection failure: this operator is unreachable. Pause, then fail over.
+    await sleep(backoff(attempt));
+    return politeFetch(path, options, attempt + 1, endpointIndex + 1);
+  }
 
   // 403 = manual ban list — retrying just confirms you're a bot. Surface the error.
   if (res.status === 403) {
     throw new Error(`Endpoint ${endpoint} returned 403 — likely banned. Fix your traffic pattern and contact the operator.`);
   }
 
-  // 429 / 503 = rate-limited / overloaded; back off and try the next endpoint.
-  if (res.status === 429 || res.status === 503) {
-    if (attempt >= 5) {
-      throw new Error(`All endpoints rate-limiting after ${attempt + 1} attempts`);
-    }
+  // 429 = rate-limited: back off on the SAME endpoint and honour Retry-After.
+  // Hopping to another operator to dodge the limit is rule 11 abuse.
+  if (res.status === 429) {
     const retryAfter = parseInt(res.headers.get('Retry-After') || '0', 10);
-    const backoffMs = retryAfter > 0
-      ? retryAfter * 1000
-      : Math.min(60_000, 2_000 * Math.pow(2, attempt));
-    await new Promise(r => setTimeout(r, backoffMs));
-    return politeFetch(path, options, attempt + 1);
+    await sleep(retryAfter > 0 ? retryAfter * 1000 : backoff(attempt));
+    return politeFetch(path, options, attempt + 1, endpointIndex);
+  }
+
+  // 5xx = that operator is overloaded or down. Pause, then fail over to the next one.
+  if (res.status >= 500) {
+    await sleep(backoff(attempt));
+    return politeFetch(path, options, attempt + 1, endpointIndex + 1);
   }
 
   return res;
@@ -396,12 +411,19 @@ about 1,000 rows even with a much larger `limit`. A monitor that read the table 
 of 3,300 NFTs as "not owned". Always loop on `more` / `next_key`, even when `limit` is larger than the table:
 
 ```typescript
-async function getAllRows(code: string, table: string) {
+async function getAllRows(code: string, table: string, maxPages = 50, pageDelayMs = 250) {
   const allRows: any[] = [];
   let more = true;
   let nextKey = '';
+  let pages = 0;
 
   while (more) {
+    if (pages++ >= maxPages) {
+      // A table this big is an indexer job, not a loop against a public node
+      // (Endpoint Etiquette above). Raise maxPages deliberately, not by default.
+      throw new Error(`getAllRows(${code}/${table}): more than ${maxPages} pages — narrow the query or use your own indexer`);
+    }
+
     const { rows, more: hasMore, next_key } = await rpc.get_table_rows({
       code,
       scope: code,
@@ -413,6 +435,8 @@ async function getAllRows(code: string, table: string) {
     allRows.push(...rows);
     more = hasMore;
     nextKey = next_key;
+
+    if (more) await new Promise(r => setTimeout(r, pageDelayMs));   // don't burst the pages
   }
 
   return allRows;
@@ -659,7 +683,6 @@ async function getAccountActions(
   account: string,
   options: {
     limit?: number;
-    skip?: number;
     filter?: string;
     sort?: 'asc' | 'desc';
     after?: string;
@@ -670,7 +693,6 @@ async function getAccountActions(
   url.searchParams.set('account', account);
   url.searchParams.set('limit', String(options.limit ?? 100));
 
-  if (options.skip) url.searchParams.set('skip', String(options.skip));
   if (options.filter) url.searchParams.set('filter', options.filter);
   if (options.sort) url.searchParams.set('sort', options.sort);
   if (options.after) url.searchParams.set('after', options.after);
@@ -692,8 +714,13 @@ await getAccountActions('alice', {
   after: new Date(Date.now() - 86400000).toISOString()
 });
 
-// Paginate through all actions
-await getAccountActions('alice', { skip: 100, limit: 100 });
+// Paginate with a cursor, not `skip`: deep offsets are slow for the indexer and
+// the result set shifts under you as new actions land. Walk backwards with
+// `before` = the oldest timestamp on the previous page (forwards: `after` on the newest).
+const page1 = await getAccountActions('alice', { limit: 100, sort: 'desc' });
+const oldest = page1.actions[page1.actions.length - 1]['@timestamp'];
+const page2 = await getAccountActions('alice', { limit: 100, sort: 'desc', before: oldest });
+// Cap the walk (see getAllRows above) and pause ~250 ms between pages.
 ```
 
 ### Filter by Contract and Action
@@ -1218,15 +1245,33 @@ const ENDPOINTS = [
   'https://proton.protonuk.io'
 ];
 
+// @proton/js throws RpcError (body in .json) for HTTP errors; a proxy's 429 page
+// may not be JSON, so also match the message.
+const isRateLimited = (e: any) =>
+  e?.json?.code === 429 || /\b429\b|Too Many Requests/i.test(e?.message || '');
+
 async function queryWithFallback(query: (rpc: JsonRpc) => Promise<any>) {
   for (const endpoint of ENDPOINTS) {
-    try {
-      const rpc = new JsonRpc(endpoint);
-      return await query(rpc);
-    } catch (error) {
-      console.error(`Endpoint ${endpoint} failed:`, error);
-      continue;
+    const rpc = new JsonRpc(endpoint);
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await query(rpc);
+      } catch (error: any) {
+        if (isRateLimited(error)) {
+          // 429 means *you* are the problem. Back off on this endpoint; moving to
+          // another operator to dodge the limit is what rule 11 forbids.
+          if (attempt === 2) throw error;
+          await new Promise(r => setTimeout(r, Math.min(60_000, 5_000 * Math.pow(2, attempt))));
+          continue;
+        }
+        // Connection failure / 5xx: this operator is unavailable — fail over
+        console.error(`Endpoint ${endpoint} failed:`, error.message);
+        break;
+      }
     }
+
+    await new Promise(r => setTimeout(r, 1_000));   // don't hammer the next one instantly
   }
   throw new Error('All endpoints failed');
 }

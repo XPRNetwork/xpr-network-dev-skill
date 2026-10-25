@@ -73,7 +73,7 @@ On Pinata Agents, Cloudflare gateways, CI containers, or anywhere without a real
 ```bash
 npm install -g @proton/cli
 proton chain:set proton
-echo "no" | proton key:add PVT_K1_yourkey   # one-shot, no prompts
+echo "no" | proton key:add "$XPR_PRIVATE_KEY"   # one-shot, no prompts; the key comes from the Secrets env var, never typed
 proton key:list
 ```
 
@@ -106,7 +106,10 @@ Do this once after Step 2, from your machine (not the agent's). The agent keeps 
 ```bash
 git clone https://github.com/XPRNetwork/xpr-network-dev-skill \
           ./skills/xpr-network-dev
+git -C ./skills/xpr-network-dev checkout <tag>   # the latest tag on the Releases page — pin a tagged release, never a moving branch
 ```
+
+`<tag>` is the newest entry at https://github.com/XPRNetwork/xpr-network-dev-skill/releases (the bootstrap script does the same thing via `SKILL_REF`, default `v2.14.0`). A checkout of `main` can change under the agent between sessions; a tag cannot.
 
 Then point the agent at the entry file:
 
@@ -186,9 +189,9 @@ Steps 1, 3, and 4 are idempotent and scriptable. Step 2 (`proton key:add`) stays
 ```bash
 git clone https://github.com/XPRNetwork/xpr-network-dev-skill.git
 cd xpr-network-dev-skill
-git checkout v2.10.0                # pin a tagged release, never a moving branch
+git checkout <tag>                  # the latest tag on the Releases page — pin a tagged release, never a moving branch
 less scripts/agent-bootstrap.sh     # review before running — it provisions a chain key
-./scripts/agent-bootstrap.sh
+./scripts/agent-bootstrap.sh        # clones the skill at SKILL_REF (default v2.14.0) into ./skills/xpr-network-dev/
 ```
 
 Or, if you've already cloned the repo:
@@ -200,11 +203,11 @@ Or, if you've already cloned the repo:
 The script:
 
 - Installs the `@xpr-agents/openclaw`, `@xpr-agents/sdk`, `@proton/js` packages
-- Clones (or updates) `xpr-network-dev-skill` into `./skills/xpr-network-dev/`
+- Clones `xpr-network-dev-skill` into `./skills/xpr-network-dev/` at the pinned tag `SKILL_REF` (default `v2.14.0`; set `SKILL_REF=<tag>` to take a newer release). If the directory already exists it runs `git fetch --tags && git checkout <tag>` there — it never pulls `main`
 - Runs the read-only smoke test
 - **Stops before Step 2.** Prints the exact commands the operator needs to run manually for the keychain provisioning.
 
-Re-running is safe — `npm install` and `git pull` are both idempotent.
+Re-running is safe — `npm install` and `git fetch --tags && git checkout <tag>` are both idempotent.
 
 ---
 
@@ -216,7 +219,7 @@ Re-running is safe — `npm install` and `git pull` are both idempotent.
 
 **Skill packaging — three options:**
 
-1. **`git clone` into the workspace** (what Step 3 does). Simplest; works today; survives session restarts because the workspace persists.
+1. **`git clone` into the workspace, pinned to a release tag** (what Step 3 does). Simplest; works today; survives session restarts because the workspace persists.
 2. **Pin this repo to IPFS, reference by CID.** Pinata is an IPFS company — their skill system natively supports CID references. Versioned by re-pin; no editorial dependency. Best when you want pinned-version skills with deterministic content addressing.
 3. **Submit to ClawHub.** ClawHub is OpenClaw's skill marketplace (used by xpr-agents for 8 of its skills). Slower to land; gives you a stable slug for distribution. Best for long-term broad distribution.
 
@@ -224,31 +227,29 @@ Re-running is safe — `npm install` and `git pull` are both idempotent.
 
 - `XPR_ACCOUNT` — the on-chain account the agent operates as
 - `ANTHROPIC_API_KEY` (or other model provider) — for the LLM backing the agent
-- `XPR_PRIVATE_KEY` — **only if** you're using the non-interactive provisioning path (Step 2b). Pinata's per-agent container is single-tenant, so the threat-model tradeoff in Step 2b is acceptable. The bootstrap script picks the key up from env, calls `proton key:add` once, then `unset`s the variable. After that the agent process never sees the key again — runtime signing still routes through the keychain via subprocess. If you'd rather paste the key once in chat instead of putting it in Secrets, leave this unset and the script will print the manual command.
+- `XPR_PRIVATE_KEY` — the **only** way the key reaches a Pinata agent (the non-interactive provisioning path, Step 2b). Pinata's per-agent container is single-tenant, so the threat-model tradeoff in Step 2b is acceptable. The bootstrap script picks the key up from env, calls `proton key:add` once, then `unset`s the variable. After that the agent process never sees the key again — runtime signing still routes through the keychain via subprocess. Delete the secret from the console immediately after the script reports success; the key now lives only in the locked keychain. Never paste the key into the chat: anything in the conversation is in the model's context, the transcript, and every log that captures them. If a key does get sent that way, rotate it.
 
-**Bootstrap chat prompt.** Paste the following into the Pinata agent's first session — the agent runs the script, which either auto-provisions the key from `XPR_PRIVATE_KEY` or prints the manual command:
+**Bootstrap chat prompt.** Paste the following into the Pinata agent's first session (fill in `<tag>` from the Releases page first) — the agent runs the script, which provisions the key from `XPR_PRIVATE_KEY`; if the secret is missing the agent stops and asks you to set it:
 
 ```
 You are an XPR Network agent on a managed console (Pinata Agents).
 Bootstrap yourself.
 
-Key handling on this console. There is no real TTY here, so exactly
-one form of key loading works:
-
-    echo "no" | proton key:add PVT_K1_<the-actual-key>
-
-Bare `proton key:add` hangs on this console, or appears to work and
-mangles the input, so do not run it. If key:add reports
-"Error: invalid base-58 value", the key was corrupted in transit
-(whitespace, smart quotes, line breaks): stop and ask me to re-send
-it rather than retrying variants, and do not echo the key back when
-you ask. Once the key is loaded, do not store or repeat it anywhere;
-confirm with `proton key:list`, which prints only public values.
+Key handling on this console. There is no real TTY here, so the only
+way the key reaches the keychain is the bootstrap script reading
+XPR_PRIVATE_KEY from Pinata Secrets and calling `proton key:add`
+itself. You never run `proton key:add` yourself, and you never
+receive, ask for, or repeat a private key in this conversation. If
+the script reports "Error: invalid base-58 value", the secret was
+corrupted in transit (whitespace, smart quotes, line breaks): stop
+and ask me to fix the secret and re-run; do not retry variants and
+do not print the secret. Confirm with `proton key:list`, which
+prints only public values.
 
 Step 1 — Run the bootstrap script:
 
   git clone https://github.com/XPRNetwork/xpr-network-dev-skill.git
-  cd xpr-network-dev-skill && git checkout v2.10.0
+  cd xpr-network-dev-skill && git checkout <tag>   # the latest tag on the Releases page, never main
   cat scripts/agent-bootstrap.sh   # review it before running; report anything surprising
   ./scripts/agent-bootstrap.sh
 
@@ -259,14 +260,13 @@ Step 2 — Keychain provisioning:
 
   a) If the script said "key added to proton CLI keychain" because
      XPR_PRIVATE_KEY was set in Pinata Secrets: confirm with
-     `proton key:list` and move on.
+     `proton key:list` and move on. Remind me to delete the secret
+     from the console now.
 
-  b) Otherwise: ask me to provide the key. When I send it, run:
-
-         echo "no" | proton key:add <key-you-received>
-
-     Then run `proton key:list` to verify the account is registered.
-     The key-handling rules above apply.
+  b) If the script did not report a provisioned keychain, stop. Ask
+     the operator to set XPR_PRIVATE_KEY in Secrets and re-run the
+     script. Never accept a private key in this conversation; if one
+     is sent, do not use it and tell the operator to rotate it.
 
 Step 3 — Ground yourself:
 
@@ -279,9 +279,9 @@ Step 3 — Ground yourself:
 
 ## Updating
 
-Re-run `./scripts/agent-bootstrap.sh` whenever you want to pull skill updates. The script:
+Re-run `./scripts/agent-bootstrap.sh` with `SKILL_REF=<tag>` set to the latest tag on the Releases page (https://github.com/XPRNetwork/xpr-network-dev-skill/releases) whenever you want to take a skill update. The script:
 
-- `git pull` on `./skills/xpr-network-dev/` if it already exists
+- `git fetch --tags && git checkout <tag>` in `./skills/xpr-network-dev/` if it already exists — never `git pull` on `main`
 - `npm install` on `@xpr-agents/openclaw`, `@xpr-agents/sdk` and `@proton/js` (re-resolves to the newest matching versions)
 
 No reinstall, no re-keychain.
@@ -296,28 +296,28 @@ No reinstall, no re-keychain.
 export PATH="$(npm config get prefix)/bin:$PATH"
 ```
 
-**"`Error: invalid base-58 value`" from `proton key:add`.** The key was mangled in transit. Chat interfaces commonly inject:
+**"`Error: invalid base-58 value`" from `proton key:add`.** The key was mangled in transit, usually when it was pasted into the secrets console. Paste surfaces commonly inject:
 - Leading/trailing whitespace or newlines
 - Smart quotes (curly `'` `"` instead of straight `'` `"`)
 - Word-wrap line breaks mid-key
 - Surrounding backticks/code fences left in by the paster
 
-The bootstrap script's `XPR_PRIVATE_KEY` path strips ASCII whitespace and verifies the `PVT_K1_` prefix before calling `proton key:add`, but it can't catch every form of corruption. If you hit this: re-send the key in a way that preserves it exactly (Pinata Secrets, file paste, or a separate plain-text channel) and retry. **Do not loop on retries** — three failed `proton key:add` attempts in 60 seconds with different mangled forms of the same key is a real footgun for accidental key disclosure.
+The bootstrap script's `XPR_PRIVATE_KEY` path strips ASCII whitespace and verifies the `PVT_K1_` prefix before calling `proton key:add`, but it can't catch every form of corruption. If you hit this: re-set the secret in the host's secret store (Pinata Secrets) so it is preserved exactly, then re-run the script. Never send the key over chat to "fix" it. **Do not loop on retries** — three failed `proton key:add` attempts in 60 seconds with different mangled forms of the same key is a real footgun for accidental key disclosure.
 
 **`proton key:add` hangs forever on a managed console.** No TTY. Use the non-interactive recipe instead:
 
 ```bash
-echo "no" | proton key:add PVT_K1_yourkey
+echo "no" | proton key:add "$XPR_PRIVATE_KEY"   # the key comes from the Secrets env var, never typed or pasted
 ```
 
-Never run bare `proton key:add` in a Pinata agent, a CI container, a thin web console, or anywhere `tty -s` returns false. See Step 2b.
+Never run bare `proton key:add` in a Pinata agent, a CI container, a thin web console, or anywhere `tty -s` returns false. See Step 2b. This recipe is for the *operator* with the key in their own env or secret store — an agent never runs it with a key received in conversation.
 
-**`TypeError: result.map is not a function` from the smoke test.** Your copy of this doc is stale. `listAgents()` returns `{ items, hasMore, nextCursor }` — call `.items.map(a => a.account)` on the result. Pull the latest doc.
+**`TypeError: result.map is not a function` from the smoke test.** Your copy of this doc is stale. `listAgents()` returns `{ items, hasMore, nextCursor }` — call `.items.map(a => a.account)` on the result. Check out the latest tag.
 
-**"`Buffer.from(undefined)` / `TypeError` on submit-order.** Your copy of `metalx-dex.md` is stale. Step 3's `git pull` fixes this.
+**"`Buffer.from(undefined)` / `TypeError` on submit-order.** Your copy of `metalx-dex.md` is stale. Re-running Step 3 against the latest tag (`git fetch --tags && git checkout <tag>`) fixes this.
 
 **"`insufficient balance` on `liquidityadd`.** The deposit prerequisite isn't optional. Read `skill/defi-trading.md` → *Add Liquidity* — the 3-step `depositprep` → empty-memo transfer → `liquidityadd` flow is mandatory.
 
-**"`api is not defined`" inside a copy-pasted `sendTransaction` / `safeTransact`.** Same fix: pull the latest skill. The helpers take a `session` argument.
+**"`api is not defined`" inside a copy-pasted `sendTransaction` / `safeTransact`.** Same fix: check out the latest tagged skill. The helpers take a `session` argument.
 
 **Agent runner refuses to start with `XPR_PRIVATE_KEY` set.** Working as designed. The `create-xpr-agent` starter's `start.sh` refuses if it sees a chain private key in env — that's the safety net for the keychain pattern (the check is in the scaffold, not in the `@xpr-agents/openclaw` package). Either unset the variable or, if you genuinely need the legacy pattern, build your own service outside the agent runner's supported envelope.

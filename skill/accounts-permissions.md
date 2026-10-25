@@ -145,7 +145,7 @@ proton action eosio updateauth '{
     "accounts": [],
     "waits": []
   }
-}' myaccount@owner
+}' myaccount@active
 ```
 
 ### Enable Inline Actions for Contract
@@ -168,7 +168,7 @@ proton action eosio updateauth '{
     ],
     "waits": []
   }
-}' mycontract@owner
+}' mycontract@active
 ```
 
 ### Create Custom Permission
@@ -188,7 +188,7 @@ proton action eosio updateauth '{
     "accounts": [],
     "waits": []
   }
-}' myaccount@owner
+}' myaccount@active
 
 # Link permission to specific action
 proton action eosio linkauth '{
@@ -196,7 +196,7 @@ proton action eosio linkauth '{
   "code": "atomicassets",
   "type": "mintasset",
   "requirement": "minter"
-}' myaccount@owner
+}' myaccount@active
 ```
 
 Now signing with the `minter` key only allows calling `atomicassets::mintasset`.
@@ -207,7 +207,7 @@ Now signing with the `minter` key only allows calling `atomicassets::mintasset`.
 proton action eosio deleteauth '{
   "account": "myaccount",
   "permission": "minter"
-}' myaccount@owner
+}' myaccount@active
 ```
 
 ### Unlink Permission
@@ -217,7 +217,7 @@ proton action eosio unlinkauth '{
   "account": "myaccount",
   "code": "atomicassets",
   "type": "mintasset"
-}' myaccount@owner
+}' myaccount@active
 ```
 
 ---
@@ -246,7 +246,7 @@ proton action eosio updateauth '{
     ],
     "waits": []
   }
-}' multisig@owner
+}' multisig@active
 ```
 
 ### Propose Multisig Transaction
@@ -367,7 +367,7 @@ proton action eosio updateauth '{
       {"wait_sec": 86400, "weight": 1}
     ]
   }
-}' myaccount@owner
+}' myaccount@active
 ```
 
 This requires a 24-hour delay before the key can authorize transactions.
@@ -380,8 +380,8 @@ This requires a 24-hour delay before the key can authorize transactions.
 
 Standard secp256k1 keys:
 ```
-Private: PVT_K1_xxxxx
-Public:  PUB_K1_xxxxx
+Private: PVT_K1_…
+Public:  PUB_K1_…
 ```
 
 Generated with:
@@ -487,6 +487,9 @@ proton action eosio updateauth '{
 }' myaccount@owner
 ```
 
+Use `@owner` only when `active` itself is compromised; every routine `updateauth` / `linkauth` /
+`deleteauth` elsewhere in this file is signed `@active`.
+
 ---
 
 ## Security Best Practices
@@ -519,7 +522,7 @@ proton action eosio updateauth '{
   "permission": "resolver",
   "parent": "active",
   "auth": {"threshold":1,"keys":[{"key":"PUB_K1_botkey","weight":1}],"accounts":[],"waits":[]}
-}' mybot@owner
+}' mybot@active
 
 # Only allow calling resolve action
 proton action eosio linkauth '{
@@ -527,10 +530,12 @@ proton action eosio linkauth '{
   "code": "pricebattle",
   "type": "resolve",
   "requirement": "resolver"
-}' mybot@owner
+}' mybot@active
 ```
 
 If the bot key is compromised, attacker can only call `resolve`, not transfer funds.
+
+A resolver bot reads `challenges` via RPC and submits exactly one `resolve` per resolvable challenge, under the limits in safety-guidelines → Network Etiquette (rule 3); it never races or retries a failed resolve in a loop.
 
 ### Rotate Keys Regularly
 
@@ -545,10 +550,14 @@ proton action eosio updateauth '{
   "permission": "active",
   "parent": "owner",
   "auth": {"threshold":1,"keys":[{"key":"PUB_K1_newkey","weight":1}],"accounts":[],"waits":[]}
-}' myaccount@owner
+}' myaccount@active
 
-# Remove old key from storage
-proton key:remove PVT_K1_oldkey
+# Remove the old key from the CLI keychain — run with no argument and paste at the
+# prompt, so the key never lands in shell history, `ps`, or a session transcript
+proton key:remove
+
+# Re-lock the keychain when the rotation is done
+proton key:lock
 ```
 
 ---

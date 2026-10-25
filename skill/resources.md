@@ -435,6 +435,7 @@ proton table mycontract mytable
 
 ## Support
 
+- **Error in this skill** (wrong fact, unsafe pattern, dead link)? Open an issue at https://github.com/XPRNetwork/xpr-network-dev-skill/issues — the only tracked channel; there is no email.
 - **Documentation issues**: https://github.com/XPRNetwork/ts-smart-contracts/issues
 - **CLI issues**: https://github.com/XPRNetwork/proton-cli/issues
 - **General questions**: [Telegram](https://t.me/XPRNetwork) or the official [Help Desk](https://help.xprnetwork.org)

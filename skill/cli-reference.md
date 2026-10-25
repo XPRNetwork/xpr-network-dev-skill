@@ -61,17 +61,14 @@ Keep private keys out of code and config files. Anything that reads a key into t
 # Generate new key pair
 proton key:generate
 
-# Add existing private key (interactive)
+# Add existing private key — interactive: paste it at the prompt, then answer the
+# "encrypt your stored keys?" prompt. Answering "no" leaves the key plaintext in
+# proton-cli.json until you run `proton key:lock`.
 proton key:add
 
-# Add key directly (will prompt for encryption)
-# Passing the key as an argument writes it to shell history and exposes it in `ps`
-# while the command runs — prefer interactive `proton key:add` wherever there's a TTY.
-proton key:add PVT_K1_xxxxx
-
-# Add key without encryption prompt (same argv exposure as above)
-# Answering "no" leaves the key plaintext in proton-cli.json until you run `proton key:lock`.
-echo "no" | proton key:add PVT_K1_xxxxx
+# Do not pass the key on argv (`proton key:add PVT_K1_...`): it lands in shell history and
+# is visible in `ps` while the command runs. Hosts with no TTY (containers, managed
+# consoles) are covered in agent-bootstrap.md → Step 2b; an agent never runs it with a key.
 
 # List all stored keys
 proton key:list
@@ -87,8 +84,8 @@ proton key:lock
 # Unlock keys
 proton key:unlock [PASSWORD]
 
-# Remove a specific key
-proton key:remove PVT_K1_xxxxx
+# Remove a specific key — omit the argument and enter the key at the prompt (same argv exposure as key:add)
+proton key:remove
 
 # Reset password and delete ALL keys
 proton key:reset
@@ -332,6 +329,10 @@ proton transaction:push TX_JSON -u https://proton.eosusa.io
 Checked against `@proton/cli` 0.1.98 and 0.1.99 source, and used for a 3,333-asset AtomicAssets mint on testnet
 and mainnet (September 2026):
 
+- **Stay inside the write budget.** `safety-guidelines.md#network-etiquette-do-not-spam-the-chain` rule 3: at most
+  6 transactions per minute per account, one in flight at a time. A bulk job raises that only under the conditions
+  listed there (own API node or paid resource plan, a human-set limit written into the config with the reason, hard
+  ceiling of 60 writes per minute per operator). Pace the loop below to that number; do not tune it up to "finish faster".
 - **Errors still exit 0.** `transaction:push`, `action` and `contract:set` catch the error, print it (in red,
   with a hint) and return normally. A script must parse stdout. Success prints a JSON result with a 64-hex
   `"transaction_id"`. No `transaction_id` means the command failed or its outcome is unknown.

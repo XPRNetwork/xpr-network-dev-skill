@@ -437,7 +437,7 @@ Oracle feed indices for LOAN collateral assets (excerpt — the **canonical full
 
 ## Whitelist Note
 
-The `whitelist` table (`updatewl(account, hash, add)`) lists **contract accounts by code hash** that are permitted to call LOAN from contract code. End-user operations are not whitelist-gated: mint, borrow, repay and liquidate all succeed for ordinary accounts that are not in the table (verified September 2026 on a live borrow and liquidation by non-whitelisted accounts).
+The `whitelist` table (`updatewl(account, hash, add)`) lists **contract accounts by code hash** that are permitted to call LOAN from contract code. End-user operations are not whitelist-gated: mint, borrow and repay all succeed for ordinary accounts that are not in the table (verified September 2026 on a live borrow by a non-whitelisted account).
 
 To check the whitelist:
 

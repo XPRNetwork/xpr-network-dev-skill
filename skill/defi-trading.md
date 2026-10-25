@@ -177,8 +177,9 @@ async function placeMarketOrder(
   bidSymbol: { sym: string; contract: string },
   askSymbol: { sym: string; contract: string }
 ) {
-  // Use a very high price for buys or very low price for sells to ensure fill
-  const aggressivePrice = orderSide === 'buy' ? '999999999' : '1';
+  // Market buy = max uint64 sentinel, market sell = 1. Keep it a string so the uint64
+  // survives JSON. See metalx-dex.md -> Contract Mappings -> Order Types.
+  const aggressivePrice = orderSide === 'buy' ? '9223372036854775806' : '1';
 
   const actions = [{
     account: 'dex',
@@ -325,22 +326,64 @@ async function withdrawFromDex(
 
 > **Write budget applies.** A bot writes to chain only to place, cancel, or fill a real order it has already decided on from RPC reads. Default ceiling 6 transactions per minute per account, one in flight, exponential backoff on failure, no scan/step/nonce actions. See [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
 
+Both bots below build every order of a cycle into one `actions[]` array and submit a
+**single transaction** (the same pattern as `cancelAllOrders` above). One transaction per
+grid level or quote level would burn the whole write budget on a single requote.
+
+```typescript
+type ExtSymbol = { sym: string; contract: string };
+
+// Returns a placeorder action object; does NOT send it. Callers batch these.
+function placeOrderAction(
+  account: string,
+  marketId: number,
+  side: 'buy' | 'sell',
+  price: string,
+  quantity: string,
+  bidSymbol: ExtSymbol,
+  askSymbol: ExtSymbol
+) {
+  return {
+    account: 'dex',
+    name: 'placeorder',
+    authorization: [{ actor: account, permission: 'active' }],
+    data: {
+      market_id: marketId,
+      account,
+      order_type: 1,
+      order_side: side === 'buy' ? 1 : 2,
+      quantity,
+      price,
+      bid_symbol: bidSymbol,
+      ask_symbol: askSymbol,
+      trigger_price: 0,
+      fill_type: 0,
+      referrer: ''
+    }
+  };
+}
+```
+
 ### Grid Bot Strategy
 
 ```typescript
 interface GridConfig {
-  marketId: string;
+  marketId: number;
   lowerPrice: number;
   upperPrice: number;
   gridLevels: number;
   quantityPerGrid: string;
+  bidSymbol: ExtSymbol;
+  askSymbol: ExtSymbol;
 }
 
 class GridBot {
+  private account: string;
   private config: GridConfig;
   private gridPrices: number[] = [];
 
-  constructor(config: GridConfig) {
+  constructor(account: string, config: GridConfig) {
+    this.account = account;
     this.config = config;
     this.calculateGridPrices();
   }
@@ -354,40 +397,43 @@ class GridBot {
     }
   }
 
+  // The whole grid goes out as ONE transaction. Network Etiquette rule 3: 6 writes per
+  // minute per account, one in flight; a 20-level grid as 20 transactions is 3 minutes
+  // of budget spent on setup.
   async placeInitialOrders(currentPrice: number) {
-    const orders: Promise<any>[] = [];
+    const actions = [];
 
     for (const gridPrice of this.gridPrices) {
       if (gridPrice < currentPrice) {
-        // Place buy order below current price
-        orders.push(this.placeBuyOrder(gridPrice));
+        actions.push(this.orderAction('buy', gridPrice));   // buy below current price
       } else if (gridPrice > currentPrice) {
-        // Place sell order above current price
-        orders.push(this.placeSellOrder(gridPrice));
+        actions.push(this.orderAction('sell', gridPrice));  // sell above current price
       }
     }
 
-    return Promise.all(orders);
+    if (actions.length === 0) return;
+    return session.transact({ actions }, { broadcast: true });
   }
 
-  private async placeBuyOrder(price: number) {
-    return placeLimitOrder(
+  private orderAction(side: 'buy' | 'sell', price: number) {
+    return placeOrderAction(
       this.account,
       this.config.marketId,
-      'buy',
+      side,
       price.toFixed(4),
-      this.config.quantityPerGrid
+      this.config.quantityPerGrid,
+      this.config.bidSymbol,
+      this.config.askSymbol
     );
+  }
+
+  // Single replacement order after a fill: one real decision, one write.
+  private async placeBuyOrder(price: number) {
+    return session.transact({ actions: [this.orderAction('buy', price)] }, { broadcast: true });
   }
 
   private async placeSellOrder(price: number) {
-    return placeLimitOrder(
-      this.account,
-      this.config.marketId,
-      'sell',
-      price.toFixed(4),
-      this.config.quantityPerGrid
-    );
+    return session.transact({ actions: [this.orderAction('sell', price)] }, { broadcast: true });
   }
 
   // Called when an order fills
@@ -415,47 +461,68 @@ class GridBot {
 
 ```typescript
 interface MarketMakerConfig {
-  marketId: string;
+  marketId: number;
   spread: number;      // e.g., 0.002 for 0.2%
   levels: number;      // Orders per side
   levelSpacing: number; // e.g., 0.001 for 0.1%
   quantityPerLevel: string;
+  bidSymbol: ExtSymbol;
+  askSymbol: ExtSymbol;
+  minRequoteMs: number;      // >= 10_000 enforced; use 20_000+ (each cycle is 2 writes)
+  requoteThreshold: number;  // e.g., 0.002: requote only if mid moved >= 0.2% since last quote
 }
 
 class MarketMaker {
+  private account: string;
   private config: MarketMakerConfig;
+  private lastQuoteAt = 0;
+  private lastMid = 0;
+
+  constructor(account: string, config: MarketMakerConfig) {
+    if (config.minRequoteMs < 10_000) throw new Error('minRequoteMs must be >= 10000');
+    this.account = account;
+    this.config = config;
+  }
 
   async updateQuotes(midPrice: number) {
-    // Cancel existing orders
+    // Gate: requote only when BOTH enough time has passed AND the mid actually moved.
+    // A quote cycle is 2 writes (one cancel batch + one place batch), so 20 s between
+    // cycles is what fits Network Etiquette rule 3 (6 writes/min per account, one in
+    // flight) on its own; the delta gate keeps real cadence far below that. Stale quotes
+    // are cheaper than a blacklisted account.
+    const now = Date.now();
+    if (now - this.lastQuoteAt < this.config.minRequoteMs) return;
+    const moved = this.lastMid === 0
+      || Math.abs(midPrice - this.lastMid) / this.lastMid >= this.config.requoteThreshold;
+    if (!moved) return;
+
+    // 1. Cancel existing orders: one transaction (see cancelAllOrders above)
     await cancelAllOrders(this.account, this.config.marketId);
 
-    const orders: Promise<any>[] = [];
+    // 2. Build every bid and ask into one actions[] array, submit one transaction
+    const actions = [];
 
     for (let i = 0; i < this.config.levels; i++) {
       const offset = this.config.spread / 2 + i * this.config.levelSpacing;
-
-      // Bid (buy)
-      const bidPrice = midPrice * (1 - offset);
-      orders.push(placeLimitOrder(
-        this.account,
-        this.config.marketId,
-        'buy',
-        bidPrice.toFixed(4),
-        this.config.quantityPerLevel
-      ));
-
-      // Ask (sell)
-      const askPrice = midPrice * (1 + offset);
-      orders.push(placeLimitOrder(
-        this.account,
-        this.config.marketId,
-        'sell',
-        askPrice.toFixed(4),
-        this.config.quantityPerLevel
-      ));
+      actions.push(this.orderAction('buy', midPrice * (1 - offset)));   // bid
+      actions.push(this.orderAction('sell', midPrice * (1 + offset)));  // ask
     }
 
-    return Promise.all(orders);
+    this.lastQuoteAt = now;
+    this.lastMid = midPrice;
+    return session.transact({ actions }, { broadcast: true });
+  }
+
+  private orderAction(side: 'buy' | 'sell', price: number) {
+    return placeOrderAction(
+      this.account,
+      this.config.marketId,
+      side,
+      price.toFixed(4),
+      this.config.quantityPerLevel,
+      this.config.bidSymbol,
+      this.config.askSymbol
+    );
   }
 }
 ```
@@ -813,13 +880,15 @@ To build a production perps DEX:
 ### Rate Limiting
 
 ```typescript
-// Prevent spam orders
-const MAX_ORDERS_PER_BLOCK = 10;
+// Prevent spam orders. A per-minute window with a single-digit cap matches the
+// skill-wide write budget (6 transactions/min per account, safety-guidelines.md ->
+// Network Etiquette rule 3). A per-block cap would still allow hundreds per minute.
+const MAX_ORDERS_PER_MINUTE = 6;
 
 @action("placeorder")
 placeOrder(...): void {
-  const userOrdersThisBlock = this.countRecentOrders(trader);
-  check(userOrdersThisBlock < MAX_ORDERS_PER_BLOCK, "Rate limit exceeded");
+  const userOrdersLastMinute = this.countRecentOrders(trader, 60); // window in seconds
+  check(userOrdersLastMinute < MAX_ORDERS_PER_MINUTE, "Rate limit exceeded");
   // ...
 }
 ```
@@ -1035,13 +1104,11 @@ METAL → XPR (via METAL/XPR pool) → XUSDC (via XPR/XUSDC pool)
 
 Each hop incurs the pool's exchange fee, making multi-hop trades more expensive.
 
-### Arbitrage Considerations
+### Why arbitrage loops are out of scope
 
 - **Do not run an on-chain arbitrage loop.** Scan with RPC reads, submit a transaction only when a concrete, verified, profitable trade exists, and stay inside the write budget in [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain). Bots that fire `step` / `scan` / nonce actions every tick are chain spam; they get rate-limited by API operators and reported.
 - **Fees eat spread:** With ~0.3% total per hop (0.2% LP + 0.1% burns/grants — see *Exchange Fees* above), a round-trip (buy + sell) costs ~0.6%. Arbitrage only works if price discrepancy exceeds this.
 - **Triangular routes:** 3-hop routes cost ~0.9% minimum in fees. In practice, pools on XPR Network are efficient enough that profitable cycles are rare.
-- **Pool imbalances:** Large swaps can temporarily move pool prices. Watch for whale trades creating imbalances that revert over time.
-- **DEX vs Swap divergence:** The order book (MetalX DEX) and AMM pools can diverge in price. Check both before trading.
 
 ---
 

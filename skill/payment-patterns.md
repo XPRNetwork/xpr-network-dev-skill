@@ -306,13 +306,17 @@ class PaymentWatcher {
   constructor(invoiceService: InvoiceService, merchantAccount: string) {
     this.invoiceService = invoiceService;
     this.merchantAccount = merchantAccount;
-    this.poller = new ActionPoller(merchantAccount, 'eosio.token:transfer', 3000);
+    // 10 s default (rule 7). A checkout page that must feel live may go down to
+    // 3 s — the floor for latency-sensitive polling — and no lower.
+    // ActionPoller (real-time-events.md) stops on 403 and backs off on 429/503.
+    this.poller = new ActionPoller(merchantAccount, 'eosio.token:transfer', 10_000);
   }
 
   start(onPayment: (invoice: Invoice) => void): void {
-    this.poller.start(async (actions) => {
-      // Finality gate for this batch - see matchPayment
-      const { last_irreversible_block_num: libNum } = await rpc.get_info();
+    this.poller.start(async (actions, lib) => {
+      // Finality gate for this batch - see matchPayment. Hyperion returns `lib`
+      // with every get_actions response; get_info only if it is missing.
+      const libNum = lib ?? (await rpc.get_info()).last_irreversible_block_num;
 
       for (const action of actions) {
         // Only process incoming transfers
@@ -571,17 +575,23 @@ class SubscriptionManager extends Contract {
       new Asset(<i64>sub.amount, XPR), "Subscription charge");
   }
 
-  // Bot calls this to process all due subscriptions
+  // Bot calls this to charge every due subscription for one merchant in a
+  // single transaction. Two guards keep it from being a free no-op anyone can
+  // spam: it needs the merchant's auth, and a call that finds nothing due
+  // asserts, so an idle tick is rejected and never included in a block.
   @action("processdue")
-  processDue(limit: u32): void {
-    const now = currentTimeSec();
+  processDue(merchant: Name, limit: u32): void {
+    requireAuth(merchant);
+    const now = <u64>currentTimeSec();
     let processed: u32 = 0;
 
-    // Query by nextCharge index
-    const cursor = this.subsTable.lowerBound(0);  // Would need proper index query
+    // Schematic - walk the byNextCharge secondary index from the oldest row
+    // upward (see smart-contracts.md for the proton-tsc secondary-index API):
+    //   for each sub with sub.nextCharge <= now && sub.merchant == merchant
+    //       && sub.active && sub.balance >= sub.amount, while processed < limit:
+    //     debit escrow and pay the merchant exactly as `charge` does; processed++
 
-    // Process due subscriptions
-    // (Simplified - actual implementation needs secondary index iteration)
+    check(processed > 0, "Nothing due");
   }
 }
 ```
@@ -589,8 +599,23 @@ class SubscriptionManager extends Contract {
 ### Subscription Bot
 
 ```typescript
+// This bot only works when the signer IS the merchant: `charge` needs
+// `merchant@billing`, a permission on the merchant account linked to
+// subsmanager::charge only (accounts-permissions.md "Use Permission Linking").
+// A bot serving several merchants holds one such linked permission per merchant
+// and runs one session per merchant; it cannot charge for a merchant whose
+// permission it does not hold.
 class SubscriptionBot {
   private interval: NodeJS.Timer | null = null;
+  private running = false;
+  // Rule 3: 6 writes/min per account, one in flight. RateLimiter is in
+  // backend-patterns.md → Rate Limiting. More due rows than that per tick? Use
+  // `processdue` (one transaction per merchant per tick) instead of one `charge`
+  // per row — still only after the read shows something due, because an empty
+  // `processdue` asserts by design.
+  private limiter = new RateLimiter(6, 60_000);
+
+  constructor(private merchant: string) {}
 
   async start(): Promise<void> {
     // Run every hour
@@ -599,8 +624,10 @@ class SubscriptionBot {
   }
 
   private async processDue(): Promise<void> {
+    if (this.running) return;   // previous tick still draining through the limiter
+    this.running = true;
     try {
-      // Get due subscriptions
+      // Get due subscriptions — a read, then write only for what the read shows
       const { rows } = await rpc.get_table_rows({
         code: 'subsmanager',
         scope: 'subsmanager',
@@ -612,26 +639,27 @@ class SubscriptionBot {
       });
 
       for (const sub of rows) {
+        if (sub.merchant !== this.merchant) continue;             // not ours to charge
         if (!sub.active) continue;
         if (Number(sub.balance) < Number(sub.amount)) continue;  // unfunded — nothing to pull
 
-        // `charge` requires the merchant's auth, so the bot key must be a limited
-        // permission on the merchant account, linked to subsmanager::charge only.
-        // See accounts-permissions.md "Use Permission Linking".
-        // Sign via proton CLI keychain — see backend-patterns.md for createCliSession setup
-        await session.link.transact({
+        // Sign via proton CLI keychain — see backend-patterns.md for createCliSession
+        // setup; the session is bound to `merchant@billing`.
+        await this.limiter.run(() => session.link.transact({
           actions: [{
             account: 'subsmanager',
             name: 'charge',
             authorization: [{ actor: sub.merchant, permission: 'billing' }],
             data: { subscriptionId: sub.id }
           }]
-        });
+        }));
 
         console.log(`Charged subscription ${sub.id}`);
       }
     } catch (error) {
       console.error('Process due error:', error);
+    } finally {
+      this.running = false;
     }
   }
 
@@ -691,7 +719,8 @@ function PaymentConfirmation({ invoiceId }: PaymentConfirmationProps) {
           <p>Amount: {invoice.total} {invoice.currency}</p>
           <PaymentQR
             recipient={invoice.merchant}
-            amount={invoice.total.toFixed(4)}
+            // precision comes from the token table, never a hardcoded 4 (see Invoice Service)
+            amount={invoice.total.toFixed(SUPPORTED_TOKENS[invoice.currency].precision)}
             memo={invoice.memo}
           />
           <p>Or send to: @{invoice.merchant}</p>
@@ -787,7 +816,8 @@ place to get precision wrong.
 ```typescript
 async function createMultiCurrencyInvoice(
   merchant: string,
-  amountUSD: number
+  amountUSD: number,
+  memo: string   // the invoice's STORED memo (InvoiceService.generateMemo) - see below
 ): Promise<{ [currency: string]: string }> {
   const links: { [currency: string]: string } = {};
 
@@ -810,12 +840,15 @@ async function createMultiCurrencyInvoice(
       continue;  // Skip non-supported
     }
 
+    // WHY: a memo minted here (e.g. `INV-${Date.now()}`) and never saved on the
+    // invoice can't be matched - matchPayment looks the invoice up BY memo. Create
+    // the invoice first, then build links from invoice.memo.
     links[symbol] = generatePaymentLink({
       recipient: merchant,
       amount: amount.toFixed(config.precision),
       token: symbol,
       contract: config.contract,
-      memo: `INV-${Date.now()}`
+      memo
     });
   }
 

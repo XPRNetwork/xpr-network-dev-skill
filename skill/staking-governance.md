@@ -283,6 +283,8 @@ Regular users on XPR Network get **free resources** for transactions. This is wh
 
 ### Subscription Plans for dApps
 
+> **Write budget applies.** A resource plan buys CPU/NET headroom for real application traffic; it does not lift the 6 transactions per minute per account default or license scan-and-fire bots. See [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
+
 dApps and developers can purchase **monthly resource subscription plans** at https://resources.xprnetwork.org:
 
 | Plan | Price | CPU Credits | NET Credits | Transactions/Day | Best For |
@@ -295,7 +297,7 @@ dApps and developers can purchase **monthly resource subscription plans** at htt
 **Key Details:**
 - **CPU is the scarcer resource** - System allocates at 80:20 CPU:NET ratio
 - **Upgrade/downgrade anytime** - Remaining time credited toward new plan
-- **Battle tested** - Enterprise BOT runs 1M+ transactions daily with steady consumption
+- **Sized for high-volume production applications** - A paid plan raises your resource quota, not the write-budget rules in safety-guidelines (rule 3).
 
 ### Resource Contract
 

@@ -22,3 +22,7 @@ Thumbs.db
 # Local development
 .env
 .env.local
+
+# One-off PR bodies live in the PR, not the tree
+PR_DESCRIPTION.md
+pr-body-*.md

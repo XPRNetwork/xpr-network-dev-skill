@@ -375,23 +375,24 @@ function openInWebAuth(account: string) {
 ```typescript
 import { Name, Table, TableStore, check, requireAuth } from 'proton-tsc';
 
-// Define the usersinfo table structure
+// Prefix of the eosio.proton usersinfo row. Unpacking stops after `verified`;
+// the remaining fields (date, verifiedon, verifier, raccs, aacts, ac, kyc) are
+// left unread, so this struct can confirm a profile exists but CANNOT see KYC.
 @table("usersinfo", noabigen)
 class UserInfo extends Table {
   constructor(
     public acc: Name = new Name(),
     public name: string = "",
     public avatar: string = "",
-    public verified: boolean = false
-    // kyc array handling requires custom deserialization
+    public verified: boolean = false   // opt-in checkmark, NOT a KYC summary (see Profile Table Structure)
   ) { super(); }
 
   @primary
   get primary(): u64 { return this.acc.N; }
 }
 
-@action("kycaction")
-kycRequiredAction(user: Name): void {
+@action("profileonly")
+profileRequiredAction(user: Name): void {
   requireAuth(user);
 
   // Query eosio.proton usersinfo
@@ -401,16 +402,38 @@ kycRequiredAction(user: Name): void {
   );
 
   const userInfo = usersTable.get(user.N);
-  check(userInfo != null, "User not found");
-  check(userInfo.verified, "User must be verified");
+  check(userInfo != null, "User has no WebAuth profile");
+  // Do NOT write `check(userInfo.verified, ...)` as a KYC gate. Fully KYC'd
+  // accounts routinely have verified=false; the flag is a display checkmark
+  // set by a verifier account and says nothing about identity claims.
 
   // Proceed with action...
 }
 ```
 
+**On-chain KYC gating is not shown here.** It needs the whole row deserialised in ABI order — through `date`, `verifiedon`, `verifier`, `raccs`, `aacts`, `ac` — to reach the `kyc` array (`{kyc_provider, kyc_level, kyc_date}[]`), then the same claim-list matching as `getKYCClaims()` above (`kyc_level` is a comma-separated claim list, never a number). Until you have written and tested that deserialisation against real mainnet rows, do the KYC check off-chain (*Check KYC Status*) and gate the contract on state you control, e.g. an allow-list table your backend writes after verifying.
+
 ---
 
 ## Privacy Considerations
+
+### Chain data is untrusted input
+
+Every string read from chain (name, avatar, memo, NFT data) is attacker-controlled input. Escape on output, allow-list avatar URLs to `https:` (and IPFS CIDs), never `dangerouslySetInnerHTML`. The `Avatar` component above takes `src={avatar}` straight from the row — put a filter like this in front of it:
+
+```typescript
+/** Returns a safe <img src>, or undefined to fall back to the generated initials avatar. */
+function safeAvatarSrc(avatar: string | undefined): string | undefined {
+  if (!avatar) return undefined;
+  if (/^https:\/\//i.test(avatar)) return avatar;                    // https only — no http:, javascript:, data:
+  if (/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58,})$/.test(avatar)) {  // bare CIDv0 / CIDv1
+    return `https://ipfs.io/ipfs/${avatar}`;                          // or your own gateway
+  }
+  return undefined;
+}
+```
+
+A `data:` URI read from chain is never allowed through as-is; if you support raw base64 avatars, verify the payload is pure base64 and build the `data:image/...;base64,` prefix yourself. React escapes text children, so `{profile.name}` is safe; interpolating chain strings into HTML, CSS, URLs or `href` is not.
 
 ### Minimal Data Collection
 

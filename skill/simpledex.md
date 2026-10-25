@@ -117,6 +117,8 @@ curl -s -X POST https://api.protonnz.com/v1/chain/get_table_rows \
 
 ## DEX Swaps
 
+> **Write budget applies.** Every action below is a chain write. Default ceiling 6 transactions per minute per account, one in flight, exponential backoff on failure; the SimpleDEX cooldown and anti-snipe limits are floors, not targets. See [`safety-guidelines.md` → Network Etiquette](safety-guidelines.md#network-etiquette-do-not-spam-the-chain).
+
 ### Memo-Based Swap (Recommended)
 
 Transfer input token to `simpledex` with memo format: `swap:POOL_ID:MIN_OUT:IS_TOKEN_A_IN`
@@ -128,7 +130,7 @@ proton action eosio.token transfer \
   myaccount@active
 ```
 
-Multiple memo swaps can chain in a single transaction (memo-based swaps are NOT rate-limited on-chain; only direct `swap`/`multihopswap` actions hit a 1-second cooldown).
+Treat the 1-second swap cooldown as the floor for any swap path, memo or direct action. Chaining several swap memos into one transaction to get around it is the spam this skill declines (Network Etiquette rule 11).
 
 ### Output Calculation (Constant Product)
 
@@ -173,7 +175,7 @@ proton action eosio.token transfer \
   the first pool; each later pool must take the previous hop's output. Wrong token / broken route → the
   whole transfer reverts (`Route: input token not in pool N`, `Route: hop K (pool N) does not take the previous output`).
 - Protocol fee: once, on the final output, at the **sum** of the hops' fee rates.
-- Payout: one transfer, memo `SimpleDEX V2: Multi-hop`. Not rate-limited (like `swap:` memos).
+- Payout: one transfer, memo `SimpleDEX V2: Multi-hop`. Same 1-second floor as every other swap path.
 
 The older two-step path still works: deposit with memo `deposit:<firstPool>`, then call
 `multihopswap` with the pool sequence and per-hop `isTokenAIns` flags (same fee model).
@@ -288,9 +290,11 @@ Sell: xprOut    = (virtualXpr * tokensIn) / (virtualTokens + tokensIn) − sell 
 | Early bird | 60–360s | Max 5,000 XPR per transaction |
 | Open | 360s+ | No restrictions |
 
+The cap exists to stop launch sniping. Splitting a buy across transactions or accounts to beat it is sniping; agents must decline (Network Etiquette rules 6 and 8).
+
 ### Graduation
 
-When `realXpr >= 50,000 XPR`, anyone can call `graduate`:
+When `realXpr >= 50,000 XPR`, anyone can call `graduate`. Call it when you are the creator or a holder ready to claim; do not run a poller that races to graduate tokens.
 
 ```bash
 proton action simplelaunch graduate '[1]' youraccount@active
@@ -362,7 +366,7 @@ CLI gotcha: the action name is `reservename`, not `reserve` — the latter fails
 | DEX swap AMM fee | 0.3% (30 bps) |
 | DEX protocol fee share | 50% to treasury |
 | Max swap per tx | 50% of reserves |
-| Swap cooldown (direct action) | 1 second |
+| Swap cooldown | 1 second (floor for every swap path) |
 | Minimum liquidity lock | 1,000 LP tokens |
 | Deposit expiry | 24 hours |
 | Max multi-hop | 4 pools |
@@ -384,7 +388,7 @@ CLI gotcha: the action name is `reservename`, not `reserve` — the latter fails
 | Slippage exceeded | Price moved past minAmountOut | Increase tolerance or retry |
 | Pool paused | Admin/guardian action | Use alternate pool |
 | Token not graduated | DEX operation on curve token | Use `simplelaunch` buy/sell instead |
-| Swap cooldown active | < 1 second elapsed (direct action only) | Wait, or use memo-based swap |
+| Swap cooldown active | < 1 second elapsed | Wait ≥1 s. The write budget in safety-guidelines applies regardless of path. |
 | Deposit expired | > 24 hours old | Withdraw and re-deposit |
 | Symbol reserved | Tried to create a reserved ticker | Pick a different symbol |
 | Creator blacklisted | Account is in `simplelaunch::blacklist` | Cannot launch; can still trade |
