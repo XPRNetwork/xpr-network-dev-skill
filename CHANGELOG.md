@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.13.0] — 2026-10-25
+
+XPR Agents tooling caught up with the 0.9.x plugin line. Three days after v2.12.0 was verified against `@xpr-agents/openclaw` 0.8.7, upstream published 0.9.0–0.9.2 and `@xpr-agents/sdk` 0.5.3; 0.9.0 is a breaking configuration change that made the module's install instructions wrong on current OpenClaw. MINOR bump: substantial correction.
+
+### Changed
+- **`xpr-agents.md`** — the OpenClaw plugin id is now `xpr-agents`, not `openclaw` (0.9.0). OpenClaw 2026.9 added a core tool named `openclaw`; a plugin whose id matches a core tool is dropped from the tool registry, which hid all 89 tools. The install bullet now says `plugins.allow: ["xpr-agents"]`, `tools.alsoAllow: ["xpr-agents"]` and `openclaw plugins inspect xpr-agents --runtime --json`, gives the 0.8.x → 0.9.x upgrade steps (uninstall, reinstall with `--accept-capabilities`, rename the config keys), and replaces the "OpenClaw 2026.9.x is not verified" caveat with the upstream verification on 2026.9.6.
+- **`xpr-agents.md`** — 0.9.1: `xpr_register_agent` and `xpr_submit_feedback` pay a configured registration/feedback fee automatically (0.8.x rejected those calls when a fee was configured). `MAX_TRANSFER_AMOUNT` counting `buyram`/`stakexpr` is attributed to 0.9.0 (0.8.8 was never published). `XPR_RPC_ENDPOINT` added to the env list.
+- **`xpr-agents.md`** — sdk 0.5.3 pagination and amount fixes noted (`listAgents` no longer repeats a row across pages, `listJobsByClient/Agent` honour the cursor, `listServices` takes a cursor, exact integer XPR quantities, `A2AClient` rejects non-http(s) endpoints); advice to pin `>=0.5.3` when paginating.
+- **`scripts/agent-bootstrap.sh`** — pins bumped to `@xpr-agents/openclaw` 0.9.2 and `@xpr-agents/sdk` 0.5.3. `@proton/js` stays at 28.1.2: both packages still declare `^28.1.2`, so 30.x would install a second copy.
+- **`agent-bootstrap.md`** — sdk version in the smoke-test comment bumped to 0.5.3.
+
+### Verified
+- Tool count (89), bundled skill count (13 in the manifest; a 14th `blockart` skill ships in the tarball but is deliberately not auto-loaded), env var names and the plugin manifest were checked against the installed 0.9.2 package; the 0.9.0–0.9.2 and 0.5.3 release commits in `XPRNetwork/xpr-agents` were read for the behavioural changes above.
+- All 21 hostnames referenced by the skill answered on 2026-10-25; `scripts/validate-skill.sh` passes all 10 checks.
+
+---
+
 ## [2.12.0] — 2026-10-16
 
 XPR Agents module brought up to date. The module was last verified against `@xpr-agents/sdk` 0.2.7 / `@xpr-agents/openclaw` 0.5.4 (v2.6.0); npm is now at 0.5.2 / 0.8.7. Every action the module already documented still matches the live ABIs field for field, so nothing was wrong, but the escrow contract and the plugin had grown a great deal the module did not mention. Verified against the installed packages' type declarations, the four mainnet ABIs, and xpragents.com/llms.txt. MINOR bump: new reference content.

@@ -16,8 +16,8 @@ SKILL_REPO="${SKILL_REPO:-https://github.com/XPRNetwork/xpr-network-dev-skill}"
 RPC_ENDPOINT="${RPC_ENDPOINT:-https://proton.eosusa.io}"
 # Pinned versions: this host goes on to hold a signing key, so never pull
 # "latest" here. Bump deliberately after reviewing the upstream changelog.
-OPENCLAW_VERSION="${OPENCLAW_VERSION:-0.8.7}"
-SDK_VERSION="${SDK_VERSION:-0.5.2}"
+OPENCLAW_VERSION="${OPENCLAW_VERSION:-0.9.2}"
+SDK_VERSION="${SDK_VERSION:-0.5.3}"
 # @proton/js: match the ^28 range @xpr-agents/sdk and openclaw declare; 30.x is
 # untested alongside them and would install a second copy.
 PROTON_JS_VERSION="${PROTON_JS_VERSION:-28.1.2}"
@@ -107,7 +107,7 @@ RPC_ENDPOINT="$RPC_ENDPOINT" node -e "
     console.log('  head:    ', info.head_block_num);
     try {
       // listAgents returns { items, hasMore, nextCursor } — verified against
-      // @xpr-agents/sdk@0.5.2. Use .items, NOT the wrapper directly.
+      // @xpr-agents/sdk@0.5.3. Use .items, NOT the wrapper directly.
       const agents = new AgentRegistry(rpc);
       const result = await agents.listAgents({ limit: 5 });
       const names = result.items.map(a => a.account);
