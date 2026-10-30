@@ -1,7 +1,7 @@
 ---
 name: xpr-network-dev
 description: XPR Network (formerly Proton) blockchain development - proton-tsc smart contracts, @proton CLI and web SDK, RPC and Hyperion queries, DeFi (MetalX, Alcor, LOAN), NFTs, the XPR Agents job board, node and Hyperion operations. Use for anything mentioning XPR, Proton, or @proton packages.
-version: 2.14.0
+version: 2.15.0
 author: XPR Network Community
 repository: https://github.com/XPRNetwork/xpr-network-dev-skill
 ---
@@ -102,7 +102,7 @@ Load specialized modules based on your task:
 
 | Module | Read When | Key Topics |
 |--------|-----------|------------|
-| `safety-guidelines.md` | **BEFORE modifying contracts, and before writing any bot, poller, keeper, cron, or script that signs** | Network Etiquette (write budget, declined bot types), table rules, deployment safety, recovery |
+| `safety-guidelines.md` | **BEFORE modifying contracts, and before writing any bot, poller, keeper, cron, or script that signs** | Network Etiquette (write budget, declined bot types), Accepting Tokens (contract + symbol, credit only real transfers), table rules, deployment safety, recovery |
 | `troubleshooting.md` | Debugging errors | Common errors, solutions, diagnostics |
 | `examples.md` | Learning patterns | PriceBattle, ProtonWall, ProtonRating |
 | `resources.md` | Finding endpoints | RPC URLs, docs, explorers, community |
@@ -227,6 +227,8 @@ const { link, session } = await ProtonWebSDK({
 6. **DEX deposits MUST use empty memo** (`""`) — any other memo (e.g. `"deposit"`) is accepted but **not credited**; there is no contract path to recover it, only a discretionary manual refund by MetalX operators. Treat as fund loss. See `metalx-dex.md`.
 7. **All-numeric account names** (e.g. `333555`) cause silent data loss in `get_table_rows` — see `rpc-queries.md` for workarounds.
 8. **A push response is not proof.** The proton CLI exits 0 on errors, and a `transaction_id` from a non-producing API node can still be dropped by the producer. Confirm by reading chain state, and never resend a push with an unknown outcome before its expiration has passed (CLI default: 3,000 s) — see `cli-reference.md` → *Scripting the CLI for bulk or high-value jobs*.
+
+9. **Accepting tokens: check the contract AND the symbol, and credit only what actually moved.** In a `transfer` notify handler, require `this.firstReceiver` to be the real token contract (XPR → `eosio.token`; XUSDC, XUSDT, XBTC, XETH, METAL → `xtokens`; XMD → `xmd.token`; LOAN → `loan.token`) *and* `quantity.symbol` to match; credit `quantity.amount` from that transfer, never an amount passed as an action argument. Counterfeit tokens carrying these exact symbols are live on mainnet, and a wallet's display name tells you nothing. Two dApps were drained this way in October 2026. See `safety-guidelines.md` → *Accepting Tokens*.
 
 ## Who this skill is for
 
