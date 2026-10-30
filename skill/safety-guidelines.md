@@ -55,6 +55,72 @@ If you are unsure whether a write is needed, it is not.
 
 ---
 
+## Accepting Tokens: Check the Contract, the Symbol, and the Transfer
+
+Anyone can create a token with any symbol on XPR Network: open token-factory contracts exist, so `XUSDC`, `XMD`, `LOAN`, and even `XPR` issued on an unrelated contract show up in wallets and explorers with the same ticker as the real thing. A token is identified by **contract + symbol**, never by the symbol alone, and the only amount your contract may credit is the one the chain actually moved.
+
+Two third-party dApps on mainnet were drained in October 2026 by exactly these two mistakes (losses were small; the patterns are what matter):
+
+1. **A dApp paid real XUSDC for counterfeit XUSDC.** Its transfer handler checked `quantity.symbol` but not which contract sent the notification. The attacker transferred "XUSDC" minted on an open factory, the contract credited it, and `withdraw` paid out real XUSDC from `xtokens`.
+2. **A vault credited contributions it never received.** It had `contribute(contributor, amount)`, an ordinary action that added `amount` to a balance table with no token transfer involved, and a `withdraw` that paid real XMD. Calling `contribute` with a large number and then `withdraw` emptied the vault.
+
+### Rule 1: the contract and the symbol, every time
+
+```typescript
+// INSECURE: symbol only. Any contract can issue a token called XUSDC.
+@action("transfer", notify)
+onTransfer(from: Name, to: Name, quantity: Asset, memo: string): void {
+  if (to != this.receiver) return;
+  if (quantity.symbol != new Symbol("XUSDC", 6)) return;
+  this.credit(from, quantity.amount);
+}
+
+// SECURE: the notification must come from the real token contract AND carry the symbol.
+@action("transfer", notify)
+onTransfer(from: Name, to: Name, quantity: Asset, memo: string): void {
+  if (to != this.receiver) return;
+  if (this.firstReceiver != Name.fromString("xtokens")) return;       // the contract
+  if (quantity.symbol != new Symbol("XUSDC", 6)) return;              // the symbol
+  check(quantity.amount > 0, "Deposit must be positive");
+  this.credit(from, quantity.amount);
+}
+```
+
+`firstReceiver` alone is not enough either: `xtokens` hosts many tokens, so a handler that checks the contract but not the symbol credits XBTC-priced balances for a transfer of a cheaper token on the same contract. Both checks, always. Reject anything else with `return` (not `check`), so a stray transfer does not abort the sender's transaction, and keep an explicit allow-list of `(contract, symbol, precision)` triples in the contract rather than parsing the symbol string.
+
+Canonical contracts for the tokens most contracts price in (full table in `resources.md` → *Token Contracts*):
+
+| Symbol | Precision | Contract |
+|--------|-----------|----------|
+| XPR | 4 | `eosio.token` |
+| XUSDC, XUSDT | 6 | `xtokens` |
+| XBTC, XETH, METAL | 8 | `xtokens` |
+| XMD | 6 | `xmd.token` |
+| LOAN | 4 | `loan.token` |
+
+### Rule 2: credit only what the chain moved
+
+```typescript
+// INSECURE: the caller names the amount. Nothing is transferred.
+@action("contribute")
+contribute(contributor: Name, amount: u64): void {
+  requireAuth(contributor);
+  this.credit(contributor, amount);          // balance table now says the vault holds funds it never received
+}
+
+// SECURE: there is no "deposit" action at all. Funds enter only through the
+// token contract's transfer, and the credited amount is quantity.amount from
+// that notification (see Rule 1). If you need per-deposit metadata, put it in
+// the transfer memo, or require a prior `open(account)` action that creates
+// the row and credits nothing.
+```
+
+The same applies off chain: a backend or indexer that credits users from Hyperion or a stream must filter on the action's contract (`act.account`) and the symbol, not on the symbol in the memo or the display name a wallet shows. Payouts then come from your contract's real balance, so a counterfeit that slipped through on the way in is paid out as the genuine token on the way out.
+
+See `smart-contracts.md` → *Notify Handler* for the full handler pattern and `payment-patterns.md` for the off-chain side.
+
+---
+
 ## The Golden Rule
 
 > **NEVER modify existing table structures once deployed with data.**

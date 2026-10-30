@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [2.15.0] — 2026-10-30
+
+Two token-acceptance mistakes promoted from "inside the examples" to top-level safety rules, after two third-party dApps on mainnet were drained by them in October 2026 (losses were small; the patterns are what matter). The correct code was already in `smart-contracts.md` and `payment-patterns.md`, but neither rule was stated in `SKILL.md` and `safety-guidelines.md` had no section on accepting tokens. MINOR bump: new safety content.
+
+### Added
+- **`SKILL.md`** — Safety Reminder 9: in a `transfer` notify handler, require `this.firstReceiver` to be the real token contract (XPR → `eosio.token`; XUSDC, XUSDT, XBTC, XETH, METAL → `xtokens`; XMD → `xmd.token`; LOAN → `loan.token`) *and* `quantity.symbol` to match; credit `quantity.amount` from that transfer, never an amount passed as an action argument. Counterfeit tokens carrying these exact symbols are live on mainnet, and a wallet's display name tells you nothing. The `safety-guidelines.md` index row now names the section.
+- **`safety-guidelines.md`** — new section *Accepting Tokens: Check the Contract, the Symbol, and the Transfer*, placed after Network Etiquette. It describes the two October 2026 cases without naming the contracts (a dApp paid real XUSDC for counterfeit XUSDC because it checked the symbol but not the sending contract; a vault credited contributions from an action argument with no transfer and paid out real XMD), gives an insecure/secure proton-tsc pair for each rule, notes that `firstReceiver` alone is not enough on a multi-token contract like `xtokens`, carries a canonical contract table checked against `resources.md`, states that open token-factory contracts exist so any symbol can be minted by anyone, and adds that off-chain crediting from Hyperion or a stream must filter on the action's contract and symbol too.
+
+### Why
+The two rules are the difference between a vault and a faucet. A contract that checks only the symbol accepts anything called `XUSDC`; a contract that credits from an argument accepts anything at all. Both pay out the genuine token on withdrawal.
+
+---
+
 ## [2.14.0] — 2026-10-25
 
 Project-wide "help builders only" review. Four independent reviewers read all 31 modules and the scripts with one question: does anything here help an agent attack, drain, spam, impersonate, or extract from the network or its users, rather than build on it? The policy layer (v2.11.0) was already pointed the right way and the v2.7.0 contract fixes held, but most code samples pre-dated the Network Etiquette rules and contradicted them on the same page. MINOR bump: substantial corrections across 24 files.
